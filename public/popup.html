@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 280px;
+    background: #1e1e1e;
+    color: #d4d4d4;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 12px;
+    padding: 12px;
+  }
+  .title {
+    color: #4ec9b0;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.3px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #333;
+  }
+  .section {
+    margin-bottom: 12px;
+  }
+  .section-title {
+    color: #888;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .toggle-row:hover { background: #2a2a2a; }
+  .toggle-row.active { background: #1a3a4a; }
+  .toggle-label { font-size: 12px; }
+  .toggle-desc { color: #666; font-size: 10px; margin-top: 1px; }
+  .toggle-switch {
+    width: 32px; height: 18px;
+    background: #444; border-radius: 9px;
+    position: relative; transition: background 0.2s;
+    flex-shrink: 0;
+  }
+  .toggle-switch::after {
+    content: '';
+    position: absolute; top: 2px; left: 2px;
+    width: 14px; height: 14px;
+    background: #888; border-radius: 50%;
+    transition: transform 0.2s, background 0.2s;
+  }
+  .toggle-row.active .toggle-switch { background: #4fc1ff; }
+  .toggle-row.active .toggle-switch::after { transform: translateX(14px); background: #fff; }
+  .slider-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px;
+  }
+  .slider-label { font-size: 12px; min-width: 36px; }
+  .slider-value { font-size: 11px; color: #4fc1ff; min-width: 30px; text-align: right; font-weight: 600; }
+  input[type="range"] {
+    flex: 1; height: 4px; -webkit-appearance: none;
+    background: #444; border-radius: 2px; outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px;
+    background: #4fc1ff; border-radius: 50%; cursor: pointer;
+  }
+  .cb-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 4px; padding: 0 4px;
+  }
+  .cb-btn {
+    background: #2a2a2a; border: 1px solid #333;
+    color: #d4d4d4; font-size: 10px; padding: 5px 6px;
+    border-radius: 4px; cursor: pointer; text-align: center;
+    transition: all 0.15s;
+  }
+  .cb-btn:hover { border-color: #555; background: #333; }
+  .cb-btn.active { border-color: #4fc1ff; background: #1a3a4a; color: #4fc1ff; font-weight: 600; }
+  .reset-btn {
+    display: block; width: 100%; margin-top: 8px;
+    background: #333; border: 1px solid #444;
+    color: #d4d4d4; font-size: 11px; padding: 6px;
+    border-radius: 4px; cursor: pointer; text-align: center;
+  }
+  .reset-btn:hover { background: #444; color: #fff; }
+  .copyright { text-align: center; color: #555; font-size: 9px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #333; }
+  .divider { border: none; border-top: 1px solid #333; margin: 10px 0; }
+</style>
+</head>
+<body>
+  <div class="title">Site Lens</div>
+
+  <div class="section">
+    <div class="section-title">Tools</div>
+    <div class="toggle-row" id="font-toggle">
+      <div>
+        <div class="toggle-label">Font Inspector</div>
+        <div class="toggle-desc">Hover to see font info</div>
+      </div>
+      <div class="toggle-switch"></div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="section">
+    <div class="section-title">Vision Simulation</div>
+    <div class="slider-row">
+      <span class="slider-label">Blur</span>
+      <input type="range" id="blur-slider" min="0" max="10" step="0.5" value="0">
+      <span class="slider-value" id="blur-value">0px</span>
+    </div>
+    <div class="toggle-row" id="gray-toggle">
+      <div>
+        <div class="toggle-label">Grayscale</div>
+      </div>
+      <div class="toggle-switch"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Color Blindness</div>
+    <div class="cb-grid">
+      <button class="cb-btn" data-cb="protanopia">Protanopia</button>
+      <button class="cb-btn" data-cb="deuteranopia">Deuteranopia</button>
+      <button class="cb-btn" data-cb="tritanopia">Tritanopia</button>
+      <button class="cb-btn" data-cb="achromatopsia">Achromatopsia</button>
+      <button class="cb-btn" data-cb="protanomaly">Protanomaly</button>
+      <button class="cb-btn" data-cb="deuteranomaly">Deuteranomaly</button>
+      <button class="cb-btn" data-cb="tritanomaly">Tritanomaly</button>
+    </div>
+  </div>
+
+  <button class="reset-btn" id="reset-btn">Reset All</button>
+
+  <div class="copyright">© 2026 Mike Wall. All rights reserved.</div>
+
+<script src="popup.js"></script>
+</body>
+</html>
