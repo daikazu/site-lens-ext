@@ -1,6 +1,7 @@
 /* global chrome */
 
 let fontActive = false;
+let copierActive = false;
 let grayActive = false;
 let activeCb = null;
 
@@ -44,10 +45,35 @@ document.getElementById('font-toggle').addEventListener('click', () => {
     if (!res) return;
     fontActive = res.active;
     document.getElementById('font-toggle').classList.toggle('active', fontActive);
+    // Mutual exclusion: if font inspector is now active, copier is off
+    if (fontActive) {
+      copierActive = false;
+      document.getElementById('copier-toggle').classList.remove('active');
+    }
     getTab().then(tab => {
       if (tab && tab.id) {
         chrome.action.setBadgeText({ tabId: tab.id, text: fontActive ? 'ON' : '' });
         chrome.action.setBadgeBackgroundColor({ tabId: tab.id, color: '#4fc1ff' });
+      }
+    });
+  });
+});
+
+// Element Copier toggle
+document.getElementById('copier-toggle').addEventListener('click', () => {
+  sendToTab({ type: 'TOGGLE_ELEMENT_COPIER' }).then(res => {
+    if (!res) return;
+    copierActive = res.active;
+    document.getElementById('copier-toggle').classList.toggle('active', copierActive);
+    // Mutual exclusion: if copier is now active, font inspector is off
+    if (copierActive) {
+      fontActive = false;
+      document.getElementById('font-toggle').classList.remove('active');
+    }
+    getTab().then(tab => {
+      if (tab && tab.id) {
+        chrome.action.setBadgeText({ tabId: tab.id, text: copierActive ? 'ON' : '' });
+        chrome.action.setBadgeBackgroundColor({ tabId: tab.id, color: '#f0b429' });
       }
     });
   });
@@ -94,6 +120,15 @@ document.getElementById('reset-btn').addEventListener('click', () => {
     sendToTab({ type: 'TOGGLE_FONT_INSPECTOR' }).then(() => {
       fontActive = false;
       document.getElementById('font-toggle').classList.remove('active');
+      getTab().then(tab => {
+        if (tab && tab.id) chrome.action.setBadgeText({ tabId: tab.id, text: '' });
+      });
+    });
+  }
+  if (copierActive) {
+    sendToTab({ type: 'TOGGLE_ELEMENT_COPIER' }).then(() => {
+      copierActive = false;
+      document.getElementById('copier-toggle').classList.remove('active');
       getTab().then(tab => {
         if (tab && tab.id) chrome.action.setBadgeText({ tabId: tab.id, text: '' });
       });
