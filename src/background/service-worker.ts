@@ -25,10 +25,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'FETCH_SITEMAP') {
-    fetch(`${message.origin}/sitemap.xml`)
+    // First check robots.txt for a Sitemap: directive
+    fetch(`${message.origin}/robots.txt`)
       .then((res) => (res.ok ? res.text() : null))
-      .then((content) => sendResponse({ exists: !!content, content }))
-      .catch(() => sendResponse({ exists: false, content: null }));
+      .then((robotsContent) => {
+        const sitemapUrls: string[] = [];
+        if (robotsContent) {
+          const lines = robotsContent.split('\n');
+          for (const line of lines) {
+            const match = line.match(/^\s*Sitemap:\s*(.+)/i);
+            if (match) sitemapUrls.push(match[1].trim());
+          }
+        }
+
+        // If robots.txt declares sitemap(s), trust that
+        if (sitemapUrls.length > 0) {
+          sendResponse({ exists: true, url: sitemapUrls[0], allUrls: sitemapUrls });
+          return;
+        }
+
+        // Otherwise fall back to checking /sitemap.xml
+        return fetch(`${message.origin}/sitemap.xml`)
+          .then((res) => {
+            if (res.ok) {
+              sendResponse({ exists: true, url: `${message.origin}/sitemap.xml`, allUrls: [] });
+            } else {
+              sendResponse({ exists: false, url: null, allUrls: [] });
+            }
+          });
+      })
+      .catch(() => sendResponse({ exists: false, url: null, allUrls: [] }));
     return true;
   }
 

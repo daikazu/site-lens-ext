@@ -23,13 +23,6 @@
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   }
 
-  function lcpBadge(ms: number | null): { type: 'success' | 'warning' | 'error' | 'info'; label: string } {
-    if (ms === null) return { type: 'info', label: 'N/A' };
-    if (ms <= 2500) return { type: 'success', label: 'Good' };
-    if (ms <= 4000) return { type: 'warning', label: 'Needs Improvement' };
-    return { type: 'error', label: 'Poor' };
-  }
-
   $effect(() => {
     chrome.devtools.inspectedWindow.eval(
       'window.location.origin',
@@ -48,7 +41,7 @@
           { type: 'FETCH_SITEMAP', tabId, origin },
           (response: any) => {
             if (response) {
-              sitemap = { exists: response.exists, url: origin + '/sitemap.xml', urls: [] };
+              sitemap = { exists: response.exists, url: response.url, urls: response.allUrls || [] };
             }
             fetchingSitemap = false;
           }
@@ -72,12 +65,18 @@
   </section>
 
   <section class="section">
-    <h3 class="section-title">sitemap.xml</h3>
+    <h3 class="section-title">Sitemap</h3>
     {#if fetchingSitemap}
       <p class="loading-text">Fetching...</p>
     {:else if sitemap?.exists}
       <Badge type="success" label="Found" />
-      {#if sitemap.url}<p class="mono">{sitemap.url}</p>{/if}
+      {#if sitemap.urls && sitemap.urls.length > 1}
+        {#each sitemap.urls as url}
+          <p class="mono">{url}</p>
+        {/each}
+      {:else if sitemap.url}
+        <p class="mono">{sitemap.url}</p>
+      {/if}
     {:else}
       <Badge type="error" label="Not Found" />
     {/if}
@@ -95,24 +94,6 @@
     </section>
   {/if}
 
-  <section class="section">
-    <h3 class="section-title">Core Web Vitals</h3>
-    <div class="vitals-grid">
-      <div class="vital">
-        <span class="vital-label">LCP</span>
-        <span class="vital-value">{data.coreWebVitals.lcp !== null ? data.coreWebVitals.lcp + 'ms' : 'N/A'}</span>
-        <Badge {...lcpBadge(data.coreWebVitals.lcp)} />
-      </div>
-      <div class="vital">
-        <span class="vital-label">CLS</span>
-        <span class="vital-value">{data.coreWebVitals.cls !== null ? data.coreWebVitals.cls : 'N/A'}</span>
-      </div>
-      <div class="vital">
-        <span class="vital-label">FID</span>
-        <span class="vital-value">{data.coreWebVitals.fid !== null ? data.coreWebVitals.fid + 'ms' : 'N/A'}</span>
-      </div>
-    </div>
-  </section>
 
   <section class="section">
     <h3 class="section-title">Page Weight</h3>
@@ -151,10 +132,6 @@
   .mono { font-family: var(--font-mono); font-size: 12px; }
   .hreflang-row { display: flex; gap: 12px; padding: 3px 0; font-size: 12px; }
   .hl-lang { background: var(--bg-active); color: var(--accent-color); padding: 0 4px; border-radius: 2px; font-size: 11px; font-family: var(--font-mono); }
-  .vitals-grid { display: flex; gap: 24px; }
-  .vital { display: flex; align-items: center; gap: 8px; }
-  .vital-label { color: var(--text-muted); font-size: 11px; font-weight: 600; }
-  .vital-value { color: var(--text-primary); font-size: 14px; font-weight: 600; font-family: var(--font-mono); }
   .weight-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
   .weight-item { display: flex; flex-direction: column; gap: 2px; }
   .weight-label { color: var(--text-muted); font-size: 11px; }

@@ -283,9 +283,6 @@ function analyzeImages(): AnalysisResult['images'] {
     imageAlt: twitterImageAlt?.getAttribute('content') || null,
   };
 
-  if (!og.url) warnings.push('No OG image set');
-  if (!twitter.image) warnings.push('No Twitter card image set');
-
   return { items, og, twitter, warnings };
 }
 
@@ -341,9 +338,6 @@ function analyzeSchema(): AnalysisResult['schema'] {
     });
   });
 
-  if (items.length === 0) {
-    warnings.push('No structured data found on this page');
-  }
 
   const invalidCount = items.filter((i) => i.issues.length > 0).length;
   if (invalidCount > 0) {
@@ -362,14 +356,6 @@ function analyzeTechnical(): AnalysisResult['technical'] {
       url: el.getAttribute('href') || '',
     });
   });
-
-  let lcp: number | null = null;
-  try {
-    const lcpEntries = performance.getEntriesByType('largest-contentful-paint');
-    if (lcpEntries.length > 0) {
-      lcp = Math.round((lcpEntries[lcpEntries.length - 1] as any).startTime);
-    }
-  } catch {}
 
   const resources = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
   let jsSize = 0, cssSize = 0, imageSize = 0, fontSize = 0, otherSize = 0;
@@ -401,7 +387,6 @@ function analyzeTechnical(): AnalysisResult['technical'] {
     robotsTxt: { exists: false, content: null },
     sitemap: { exists: false, url: null, urls: [] },
     hreflang,
-    coreWebVitals: { lcp, cls: null, fid: null },
     pageWeight: { total, js: jsSize, css: cssSize, images: imageSize, fonts: fontSize, other: otherSize },
     renderBlocking,
     jsRendering: { initialElementCount: 0, renderedElementCount, diff: 0 },

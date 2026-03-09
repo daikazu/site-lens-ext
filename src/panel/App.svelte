@@ -45,7 +45,7 @@
       Content: 0,
       Links: analysisData.links.warnings.length,
       Images: analysisData.images.warnings.length,
-      Schema: analysisData.schema.warnings.length,
+      Schema: 0,
       Technical: 0,
     };
   });

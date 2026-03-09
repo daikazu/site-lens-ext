@@ -63,14 +63,7 @@
     </div>
   </section>
 
-  <section class="section">
-    <h3 class="section-title">Meta Keywords</h3>
-    <div class="field-row">
-      <span class="field-value">{data.keywords || '(none)'}</span>
-    </div>
-  </section>
-
-  <section class="section">
+<section class="section">
     <h3 class="section-title">URL</h3>
     <div class="field-value mono">{data.url}</div>
   </section>

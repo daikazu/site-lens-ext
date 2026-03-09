@@ -67,40 +67,7 @@
     </section>
   {/if}
 
-  <section class="section">
-    <h3 class="section-title">OG Image</h3>
-    {#if data.og.url}
-      <div class="image-preview">
-        <img src={data.og.url} alt={data.og.alt || 'OG Image'} class="preview-img" />
-        <div class="image-meta">
-          <div><span class="meta-label">URL:</span> <span class="mono">{data.og.url}</span></div>
-          {#if data.og.width}<div><span class="meta-label">Size:</span> {data.og.width} x {data.og.height}</div>{/if}
-          {#if data.og.type}<div><span class="meta-label">Type:</span> {data.og.type}</div>{/if}
-          {#if data.og.alt}<div><span class="meta-label">Alt:</span> {data.og.alt}</div>{/if}
-        </div>
-      </div>
-    {:else}
-      <p class="not-set">Not set</p>
-    {/if}
-  </section>
-
-  <section class="section">
-    <h3 class="section-title">Twitter Card Image</h3>
-    {#if data.twitter.image}
-      <div class="image-preview">
-        <img src={data.twitter.image} alt={data.twitter.imageAlt || 'Twitter Image'} class="preview-img" />
-        <div class="image-meta">
-          <div><span class="meta-label">Card:</span> {data.twitter.card || '(not set)'}</div>
-          <div><span class="meta-label">URL:</span> <span class="mono">{data.twitter.image}</span></div>
-          {#if data.twitter.imageAlt}<div><span class="meta-label">Alt:</span> {data.twitter.imageAlt}</div>{/if}
-        </div>
-      </div>
-    {:else}
-      <p class="not-set">Not set</p>
-    {/if}
-  </section>
-
-  <section class="section">
+<section class="section">
     <h3 class="section-title">Page Images ({data.items.length})</h3>
     <SortableTable columns={imageColumns} rows={data.items} maxHeight="400px" onRowClick={scrollToImage} />
   </section>

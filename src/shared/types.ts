@@ -111,11 +111,6 @@ export interface TechnicalData {
   robotsTxt: { exists: boolean; content: string | null };
   sitemap: { exists: boolean; url: string | null; urls: string[] };
   hreflang: { lang: string; url: string }[];
-  coreWebVitals: {
-    lcp: number | null;
-    cls: number | null;
-    fid: number | null;
-  };
   pageWeight: {
     total: number;
     js: number;
