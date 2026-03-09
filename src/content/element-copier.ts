@@ -154,6 +154,10 @@ function hidePopup() {
     selectedTarget.classList.remove(OUTLINE_CLASS);
     selectedTarget = null;
   }
+  if (currentTarget) {
+    currentTarget.classList.remove(OUTLINE_CLASS);
+    currentTarget = null;
+  }
 }
 
 function handleMouseMove(e: MouseEvent) {
