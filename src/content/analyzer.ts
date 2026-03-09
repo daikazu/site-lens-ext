@@ -1,6 +1,7 @@
 import type { AnalysisResult } from '../shared/types';
 import { highlightLinks, clearHighlights } from './highlighter';
-import { toggleFontInspector } from './font-inspector';
+import { toggleFontInspector, disableFontInspector } from './font-inspector';
+import { toggleElementCopier, disableElementCopier } from './element-copier';
 import { setBlur, toggleGrayscale, setColorBlindness, getState as getVisionState, resetAll as resetVision } from './vision-simulator';
 
 function analyzeOverview(): AnalysisResult['overview'] {
@@ -469,7 +470,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse({ ok: true });
   }
   if (message.type === 'TOGGLE_FONT_INSPECTOR') {
+    disableElementCopier();
     const isActive = toggleFontInspector();
+    sendResponse({ active: isActive });
+  }
+  if (message.type === 'TOGGLE_ELEMENT_COPIER') {
+    disableFontInspector();
+    const isActive = toggleElementCopier();
     sendResponse({ active: isActive });
   }
   if (message.type === 'SET_BLUR') {
