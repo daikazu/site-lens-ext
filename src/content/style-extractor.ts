@@ -112,7 +112,7 @@ function getPseudoStyles(
   const computed = window.getComputedStyle(el, pseudo);
   const content = computed.getPropertyValue('content');
 
-  if (!content || content === 'none' || content === '""' || content === "''") {
+  if (!content || content === 'none') {
     return null;
   }
 
@@ -262,6 +262,18 @@ function cloneWithState(root: Element): Element {
       cloned.textContent = orig.value;
     } else if (orig instanceof HTMLSelectElement && cloned instanceof HTMLSelectElement) {
       cloned.selectedIndex = orig.selectedIndex;
+    }
+  });
+
+  // Absolutize image sources so they work outside the original page
+  const origImgs = root.querySelectorAll('img');
+  const cloneImgs = clone.querySelectorAll('img');
+  origImgs.forEach((origImg, i) => {
+    const cloneImg = cloneImgs[i] as HTMLImageElement;
+    if (!cloneImg) return;
+    // HTMLImageElement.src always returns the absolute URL
+    if ((origImg as HTMLImageElement).src) {
+      cloneImg.src = (origImg as HTMLImageElement).src;
     }
   });
 
