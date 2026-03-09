@@ -4,6 +4,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  if (message.type === 'ELEMENT_COPIER_DISABLED' && sender.tab?.id) {
+    chrome.action.setBadgeText({ tabId: sender.tab.id, text: '' });
+    return false;
+  }
+
   if (message.type === 'ANALYZE_PAGE') {
     chrome.tabs.sendMessage(message.tabId, { type: 'ANALYZE_PAGE' }, (response) => {
       sendResponse(response || { error: 'No response from content script' });
