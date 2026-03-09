@@ -99,8 +99,11 @@ function getFontInfo(el: Element) {
     '900': '900 (Black)',
   };
 
+  const fullFamily = styles.fontFamily;
+  const primaryFont = fullFamily.split(',')[0].trim().replace(/^["']|["']$/g, '');
+
   return {
-    fontFamily: styles.fontFamily,
+    fontFamily: primaryFont,
     fontSize: styles.fontSize,
     fontWeight: weightMap[styles.fontWeight] || styles.fontWeight,
     fontStyle: styles.fontStyle,
