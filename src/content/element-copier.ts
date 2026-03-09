@@ -1,3 +1,5 @@
+import { extractSnippet, extractCssOnly } from './style-extractor';
+
 let active = false;
 let popup: HTMLDivElement | null = null;
 let styleEl: HTMLStyleElement | null = null;
@@ -7,9 +9,6 @@ let selectedTarget: Element | null = null;
 const POPUP_ID = 'seo-ext-copier-popup';
 const STYLE_ID = 'seo-ext-element-copier-style';
 const OUTLINE_CLASS = 'seo-ext-copier-inspected';
-
-const IGNORED_PREFIXES = ['-webkit-', '-moz-', '-ms-', '-o-'];
-const IGNORED_PROPS = ['perspective-origin', 'transform-origin'];
 
 function ensureStyles() {
   if (document.getElementById(STYLE_ID)) return;
@@ -64,39 +63,6 @@ function ensureStyles() {
   document.head.appendChild(styleEl);
 }
 
-function getMeaningfulStyles(el: Element): string {
-  const computed = window.getComputedStyle(el);
-  const tag = el.tagName.toLowerCase();
-
-  const baseline = document.createElement(tag);
-  baseline.style.position = 'absolute';
-  baseline.style.visibility = 'hidden';
-  baseline.style.pointerEvents = 'none';
-  document.body.appendChild(baseline);
-  try {
-    const baseComputed = window.getComputedStyle(baseline);
-
-    const lines: string[] = [];
-
-    for (let i = 0; i < computed.length; i++) {
-      const prop = computed[i];
-      if (IGNORED_PREFIXES.some(p => prop.startsWith(p))) continue;
-      if (IGNORED_PROPS.includes(prop)) continue;
-
-      const val = computed.getPropertyValue(prop);
-      const baseVal = baseComputed.getPropertyValue(prop);
-
-      if (val !== baseVal) {
-        lines.push(`${prop}: ${val};`);
-      }
-    }
-
-    return lines.join('\n');
-  } finally {
-    baseline.remove();
-  }
-}
-
 function createPopup() {
   popup = document.createElement('div');
   popup.id = POPUP_ID;
@@ -114,20 +80,21 @@ function showPopup(el: Element, x: number, y: number) {
   cssBtn.textContent = 'Copy CSS';
   cssBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    const css = getMeaningfulStyles(el);
+    const css = extractCssOnly(el);
     navigator.clipboard.writeText(css).then(() => showCopied(cssBtn));
   });
 
-  const htmlBtn = document.createElement('button');
-  htmlBtn.className = 'seo-ec-btn';
-  htmlBtn.textContent = 'Copy HTML';
-  htmlBtn.addEventListener('click', (e) => {
+  const snippetBtn = document.createElement('button');
+  snippetBtn.className = 'seo-ec-btn';
+  snippetBtn.textContent = 'Copy Snippet';
+  snippetBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    navigator.clipboard.writeText(el.outerHTML).then(() => showCopied(htmlBtn));
+    const snippet = extractSnippet(el);
+    navigator.clipboard.writeText(snippet).then(() => showCopied(snippetBtn));
   });
 
   popup.appendChild(cssBtn);
-  popup.appendChild(htmlBtn);
+  popup.appendChild(snippetBtn);
   popup.style.display = 'flex';
 
   requestAnimationFrame(() => {
