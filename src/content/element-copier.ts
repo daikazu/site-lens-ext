@@ -73,25 +73,28 @@ function getMeaningfulStyles(el: Element): string {
   baseline.style.visibility = 'hidden';
   baseline.style.pointerEvents = 'none';
   document.body.appendChild(baseline);
-  const baseComputed = window.getComputedStyle(baseline);
+  try {
+    const baseComputed = window.getComputedStyle(baseline);
 
-  const lines: string[] = [];
+    const lines: string[] = [];
 
-  for (let i = 0; i < computed.length; i++) {
-    const prop = computed[i];
-    if (IGNORED_PREFIXES.some(p => prop.startsWith(p))) continue;
-    if (IGNORED_PROPS.includes(prop)) continue;
+    for (let i = 0; i < computed.length; i++) {
+      const prop = computed[i];
+      if (IGNORED_PREFIXES.some(p => prop.startsWith(p))) continue;
+      if (IGNORED_PROPS.includes(prop)) continue;
 
-    const val = computed.getPropertyValue(prop);
-    const baseVal = baseComputed.getPropertyValue(prop);
+      const val = computed.getPropertyValue(prop);
+      const baseVal = baseComputed.getPropertyValue(prop);
 
-    if (val !== baseVal) {
-      lines.push(`${prop}: ${val};`);
+      if (val !== baseVal) {
+        lines.push(`${prop}: ${val};`);
+      }
     }
-  }
 
-  baseline.remove();
-  return lines.join('\n');
+    return lines.join('\n');
+  } finally {
+    baseline.remove();
+  }
 }
 
 function createPopup() {
