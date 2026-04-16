@@ -26,11 +26,28 @@
 
   let zipProgress = $state<ZipProgress | null>(null);
   let zipController: AbortController | null = null;
+  let pendingDownloadListener: ((delta: chrome.downloads.DownloadDelta) => void) | null = null;
+
+  $effect(() => {
+    return () => {
+      // Tab switched away or component destroyed — abort in-flight work and clean up listeners
+      zipController?.abort();
+      if (pendingDownloadListener) {
+        chrome.downloads.onChanged.removeListener(pendingDownloadListener);
+        pendingDownloadListener = null;
+      }
+      if (toastTimer != null) {
+        window.clearTimeout(toastTimer);
+        toastTimer = null;
+      }
+    };
+  });
 
   async function downloadZip(items: ImageItem[]) {
     if (zipProgress) return; // already running
     if (items.length === 0) return;
-    zipController = new AbortController();
+    const controller = new AbortController();
+    zipController = controller;
     zipProgress = { fetched: 0, total: items.length, failures: 0 };
     try {
       const tab = await chrome.tabs.get(tabId);
@@ -41,34 +58,44 @@
         items,
         hostname,
         (p) => { zipProgress = p; },
-        zipController.signal
+        controller.signal
       );
+
       const url = URL.createObjectURL(result.blob);
-      const downloadId = await chrome.downloads.download({
-        url,
-        filename: result.filename,
-        saveAs: false,
-      });
-      // Revoke object URL once the download finishes
-      const listener = (delta: chrome.downloads.DownloadDelta) => {
-        if (delta.id === downloadId && delta.state?.current === 'complete') {
-          URL.revokeObjectURL(url);
-          chrome.downloads.onChanged.removeListener(listener);
-        }
-      };
-      chrome.downloads.onChanged.addListener(listener);
+      try {
+        const downloadId = await chrome.downloads.download({
+          url,
+          filename: result.filename,
+          saveAs: false,
+        });
+        const listener = (delta: chrome.downloads.DownloadDelta) => {
+          if (delta.id !== downloadId) return;
+          const state = delta.state?.current;
+          if (state === 'complete' || state === 'interrupted') {
+            URL.revokeObjectURL(url);
+            chrome.downloads.onChanged.removeListener(listener);
+            if (pendingDownloadListener === listener) pendingDownloadListener = null;
+          }
+        };
+        pendingDownloadListener = listener;
+        chrome.downloads.onChanged.addListener(listener);
+      } catch (downloadErr) {
+        URL.revokeObjectURL(url);
+        throw downloadErr;
+      }
+
       const failNote = result.failed > 0 ? ` (${result.failed} failed — see _manifest.txt)` : '';
       showToast(`Downloaded ${result.succeeded} of ${items.length}${failNote}`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg === 'Aborted') {
+      if (controller.signal.aborted) {
         showToast('Download cancelled');
       } else {
+        const msg = err instanceof Error ? err.message : String(err);
         showToast(`Download failed: ${msg}`);
       }
     } finally {
       zipProgress = null;
-      zipController = null;
+      if (zipController === controller) zipController = null;
     }
   }
 
