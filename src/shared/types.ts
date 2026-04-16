@@ -61,9 +61,19 @@ export interface LinksData {
 }
 
 // --- Images ---
+export type ImageSource =
+  | 'img'
+  | 'picture'
+  | 'css-bg'
+  | 'svg'
+  | 'video-poster'
+  | 'favicon'
+  | 'meta';
+
 export interface ImageItem {
-  src: string;
-  alt: string;
+  src: string;            // absolute URL or data: URI
+  source: ImageSource;
+  alt: string;            // empty string if not applicable
   width: number | null;
   height: number | null;
   loading: string | null;
