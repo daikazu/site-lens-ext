@@ -3,6 +3,7 @@ import { highlightLinks, clearHighlights } from './highlighter';
 import { toggleFontInspector, disableFontInspector } from './font-inspector';
 import { toggleElementCopier, disableElementCopier } from './element-copier';
 import { setBlur, toggleGrayscale, setColorBlindness, getState as getVisionState, resetAll as resetVision } from './vision-simulator';
+import { detectImages } from './image-detector';
 
 function analyzeOverview(): AnalysisResult['overview'] {
   const title = document.title || '';
@@ -236,28 +237,12 @@ function analyzeLinks(): AnalysisResult['links'] {
 }
 
 function analyzeImages(): AnalysisResult['images'] {
-  const imgEls = document.querySelectorAll('img');
-  const items: { src: string; alt: string; width: number | null; height: number | null; loading: string | null; issues: string[] }[] = [];
+  const items = detectImages();
   const warnings: string[] = [];
 
-  imgEls.forEach((el) => {
-    const src = el.getAttribute('src') || el.getAttribute('data-src') || '';
-    const alt = el.getAttribute('alt') ?? '';
-    const width = el.naturalWidth || el.width || null;
-    const height = el.naturalHeight || el.height || null;
-    const loading = el.getAttribute('loading');
-    const issues: string[] = [];
-
-    if (alt === '') issues.push('Missing alt text');
-    if (!loading) issues.push('No lazy loading attribute');
-
-    items.push({ src, alt, width, height, loading, issues });
-  });
-
-  if (items.some((i) => i.issues.includes('Missing alt text'))) {
-    const count = items.filter((i) => i.issues.includes('Missing alt text')).length;
-    warnings.push(`${count} image(s) missing alt text`);
-  }
+  const imgItems = items.filter((i) => i.source === 'img');
+  const missingAlt = imgItems.filter((i) => i.issues.includes('Missing alt text')).length;
+  if (missingAlt > 0) warnings.push(`${missingAlt} image(s) missing alt text`);
 
   const ogImage = document.querySelector('meta[property="og:image"]');
   const ogWidth = document.querySelector('meta[property="og:image:width"]');
