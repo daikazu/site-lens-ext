@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { ImagesData } from '../../shared/types';
+  import type { ImagesData, ImageItem, ImageSource } from '../../shared/types';
   import Badge from '../components/Badge.svelte';
-  import SortableTable from '../components/SortableTable.svelte';
+  import ImagesTable from '../components/ImagesTable.svelte';
 
   interface Props {
     data: ImagesData;
@@ -10,19 +10,41 @@
 
   let { data, tabId }: Props = $props();
 
-  const imageColumns = [
-    { key: 'src', label: 'Source', width: '40%' },
-    { key: 'alt', label: 'Alt Text', width: '25%' },
-    { key: 'width', label: 'Width', width: '8%' },
-    { key: 'height', label: 'Height', width: '8%' },
-    { key: 'loading', label: 'Loading', width: '9%' },
-    { key: 'issues', label: 'Issues', width: '10%', render: (v: unknown) => (v as string[]).join(', ') },
-  ];
+  const ALL_SOURCES: ImageSource[] = ['img', 'picture', 'css-bg', 'svg', 'video-poster', 'favicon', 'meta'];
+  const DEFAULT_ON: ImageSource[] = ['img', 'picture', 'favicon', 'meta'];
 
-  function scrollToImage(row: Record<string, unknown>) {
-    const src = String(row.src || '');
-    const srcJson = JSON.stringify(src);
-    // chrome.devtools.inspectedWindow.eval is the official Chrome DevTools API
+  let activeSources = $state<Set<ImageSource>>(new Set(DEFAULT_ON));
+  let selectedSrcs = $state<Set<string>>(new Set());
+
+  let filteredItems = $derived(data.items.filter((it) => activeSources.has(it.source)));
+  let selectedItems = $derived(filteredItems.filter((it) => selectedSrcs.has(it.src)));
+
+  function toggleSource(s: ImageSource) {
+    const next = new Set(activeSources);
+    if (next.has(s)) next.delete(s);
+    else next.add(s);
+    activeSources = next;
+  }
+
+  function toggleRow(item: ImageItem) {
+    const next = new Set(selectedSrcs);
+    if (next.has(item.src)) next.delete(item.src);
+    else next.add(item.src);
+    selectedSrcs = next;
+  }
+
+  function toggleAll(allSelected: boolean) {
+    const next = new Set(selectedSrcs);
+    if (allSelected) {
+      filteredItems.forEach((i) => next.delete(i.src));
+    } else {
+      filteredItems.forEach((i) => next.add(i.src));
+    }
+    selectedSrcs = next;
+  }
+
+  function scrollToImage(item: ImageItem) {
+    const srcJson = JSON.stringify(item.src);
     chrome.devtools.inspectedWindow.eval(
       `(function() {
         var STYLE_ID = 'seo-ext-img-highlight-style';
@@ -36,14 +58,14 @@
         var prev = document.querySelectorAll('.seo-ext-img-scrolled');
         prev.forEach(function(p) { p.classList.remove('seo-ext-img-scrolled'); });
         var target = ${srcJson};
+        var resolvedTarget = target;
+        try { resolvedTarget = new URL(target, window.location.href).href; } catch(e) {}
         var imgs = document.querySelectorAll('img');
         for (var i = 0; i < imgs.length; i++) {
           var el = imgs[i];
           var elSrc = el.getAttribute('src') || el.getAttribute('data-src') || '';
           try { elSrc = new URL(elSrc, window.location.href).href; } catch(e) {}
-          var resolvedTarget = target;
-          try { resolvedTarget = new URL(target, window.location.href).href; } catch(e) {}
-          if (elSrc === resolvedTarget || el.getAttribute('src') === target || el.getAttribute('data-src') === target) {
+          if (elSrc === resolvedTarget || el.getAttribute('src') === target) {
             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
             el.classList.add('seo-ext-img-scrolled');
             setTimeout(function() { el.classList.remove('seo-ext-img-scrolled'); }, 4000);
@@ -67,9 +89,35 @@
     </section>
   {/if}
 
-<section class="section">
-    <h3 class="section-title">Page Images ({data.items.length})</h3>
-    <SortableTable columns={imageColumns} rows={data.items} maxHeight="400px" onRowClick={scrollToImage} />
+  <section class="extract-panel">
+    <div class="panel-title">Extract</div>
+    <div class="filter-row">
+      <span class="filter-label">Sources:</span>
+      {#each ALL_SOURCES as src}
+        <label class="filter-chip">
+          <input type="checkbox" checked={activeSources.has(src)} onchange={() => toggleSource(src)} />
+          <span>{src}</span>
+        </label>
+      {/each}
+    </div>
+    <div class="status-line">
+      Showing {filteredItems.length} of {data.items.length} images
+      {#if selectedSrcs.size > 0} · {selectedItems.length} selected{/if}
+    </div>
+    <!-- Export buttons wired in Tasks 9 & 10 -->
+    <div class="actions" id="extract-actions-placeholder"></div>
+  </section>
+
+  <section class="section">
+    <h3 class="section-title">Page Images</h3>
+    <ImagesTable
+      items={filteredItems}
+      selectedSrcs={selectedSrcs}
+      maxHeight="500px"
+      onToggleRow={toggleRow}
+      onToggleAll={toggleAll}
+      onScrollTo={scrollToImage}
+    />
   </section>
 </div>
 
@@ -77,12 +125,28 @@
   .images-tab { display: flex; flex-direction: column; gap: 4px; }
   .warnings { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid var(--border-color); }
   .warning-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .extract-panel {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+  }
+  .panel-title {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 8px;
+  }
+  .filter-row {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: 6px 12px; font-size: 12px;
+  }
+  .filter-label { color: var(--text-muted); }
+  .filter-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 12px;
+    background: var(--bg-primary); cursor: pointer;
+  }
+  .filter-chip input { margin: 0; cursor: pointer; }
+  .status-line { margin-top: 8px; font-size: 12px; color: var(--text-muted); }
+  .actions { margin-top: 8px; display: flex; gap: 8px; }
   .section { padding: 10px 12px; border-bottom: 1px solid var(--border-color); }
   .section-title { color: var(--text-secondary); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-  .image-preview { display: flex; gap: 12px; align-items: flex-start; }
-  .preview-img { max-width: 200px; max-height: 120px; border: 1px solid var(--border-color); border-radius: 4px; object-fit: contain; background: var(--bg-secondary); }
-  .image-meta { font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
-  .meta-label { color: var(--text-muted); }
-  .mono { font-family: var(--font-mono); }
-  .not-set { color: var(--text-muted); font-size: 12px; }
 </style>
