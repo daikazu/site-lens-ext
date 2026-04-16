@@ -2,6 +2,7 @@
   import type { ImagesData, ImageItem, ImageSource } from '../../shared/types';
   import Badge from '../components/Badge.svelte';
   import ImagesTable from '../components/ImagesTable.svelte';
+  import { buildUrlList, buildCsv } from '../lib/image-export';
 
   interface Props {
     data: ImagesData;
@@ -15,6 +16,13 @@
 
   let activeSources = $state<Set<ImageSource>>(new Set(DEFAULT_ON));
   let selectedSrcs = $state<Set<string>>(new Set());
+  let toast = $state<string | null>(null);
+  let toastTimer: number | null = null;
+  function showToast(msg: string) {
+    toast = msg;
+    if (toastTimer != null) window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => { toast = null; toastTimer = null; }, 3000);
+  }
 
   let filteredItems = $derived(data.items.filter((it) => activeSources.has(it.source)));
   let selectedItems = $derived(filteredItems.filter((it) => selectedSrcs.has(it.src)));
@@ -41,6 +49,19 @@
       filteredItems.forEach((i) => next.add(i.src));
     }
     selectedSrcs = next;
+  }
+
+  async function copyUrls(items: ImageItem[]) {
+    const result = buildUrlList(items);
+    await navigator.clipboard.writeText(result.text);
+    const skipNote = result.skipped > 0 ? ` (${result.skipped} inline SVGs skipped)` : '';
+    showToast(`Copied ${result.count} URLs${skipNote}`);
+  }
+
+  async function copyCsv(items: ImageItem[]) {
+    const csv = buildCsv(items);
+    await navigator.clipboard.writeText(csv);
+    showToast(`Copied ${items.length} rows as CSV`);
   }
 
   function scrollToImage(item: ImageItem) {
@@ -104,8 +125,23 @@
       Showing {filteredItems.length} of {data.items.length} images
       {#if selectedItems.length > 0} · {selectedItems.length} selected{/if}
     </div>
-    <!-- Export buttons wired in Tasks 9 & 10 -->
-    <div class="actions" id="extract-actions-placeholder"></div>
+    <div class="actions">
+      <div class="action-group">
+        <span class="action-label">Copy URLs:</span>
+        <button class="action-btn" onclick={() => copyUrls(filteredItems)} disabled={filteredItems.length === 0}>
+          All ({filteredItems.length})
+        </button>
+        <button class="action-btn" onclick={() => copyUrls(selectedItems)} disabled={selectedItems.length === 0}>
+          Selected ({selectedItems.length})
+        </button>
+        <button class="action-btn" onclick={() => copyCsv(filteredItems)} disabled={filteredItems.length === 0}>
+          As CSV
+        </button>
+      </div>
+    </div>
+    {#if toast}
+      <div class="toast">{toast}</div>
+    {/if}
   </section>
 
   <section class="section">
@@ -147,6 +183,29 @@
   .filter-chip input { margin: 0; cursor: pointer; }
   .status-line { margin-top: 8px; font-size: 12px; color: var(--text-muted); }
   .actions { margin-top: 8px; display: flex; gap: 8px; }
+  .action-group { display: inline-flex; align-items: center; gap: 6px; }
+  .action-label { color: var(--text-muted); font-size: 11px; margin-right: 2px; }
+  .action-btn {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    font-size: 11px; padding: 4px 10px;
+    border-radius: 3px; cursor: pointer;
+  }
+  .action-btn:hover:not(:disabled) {
+    border-color: var(--info-color);
+    color: var(--info-color);
+  }
+  .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .toast {
+    margin-top: 8px;
+    background: rgba(78, 201, 176, 0.15);
+    color: var(--success-color);
+    padding: 4px 10px;
+    border-radius: 3px;
+    font-size: 11px;
+    display: inline-block;
+  }
   .section { padding: 10px 12px; border-bottom: 1px solid var(--border-color); }
   .section-title { color: var(--text-secondary); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
 </style>
