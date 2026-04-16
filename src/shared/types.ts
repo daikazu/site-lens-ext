@@ -180,7 +180,12 @@ export type MessageType =
   | { type: 'DEEP_SCAN_LINKS'; tabId: number; urls: string[] }
   | { type: 'FETCH_ROBOTS'; tabId: number; origin: string }
   | { type: 'FETCH_SITEMAP'; tabId: number; origin: string }
+  | { type: 'FETCH_IMAGE'; url: string }
   | { type: 'HIGHLIGHT_LINKS'; tabId: number; mode: HighlightMode }
   | { type: 'CLEAR_HIGHLIGHTS'; tabId: number };
+
+export type FetchImageResponse =
+  | { ok: true; bytes: ArrayBuffer; contentType: string; status: number }
+  | { ok: false; error: string; status?: number };
 
 export type HighlightMode = 'internal' | 'external' | 'nofollow' | 'broken' | 'all' | 'none';

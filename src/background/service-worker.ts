@@ -74,5 +74,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'FETCH_IMAGE') {
+    fetch(message.url)
+      .then(async (res) => {
+        if (!res.ok) {
+          sendResponse({ ok: false, error: `HTTP ${res.status}`, status: res.status });
+          return;
+        }
+        const contentType = res.headers.get('content-type') || 'application/octet-stream';
+        const bytes = await res.arrayBuffer();
+        sendResponse({ ok: true, bytes, contentType, status: res.status });
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        sendResponse({ ok: false, error: msg });
+      });
+    return true;
+  }
+
   return false;
 });
