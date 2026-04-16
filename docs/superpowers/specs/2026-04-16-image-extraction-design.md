@@ -153,6 +153,7 @@ site-lens-images-example.com-20260416-143022.zip
 ├─ css-bg/
 ├─ svg/
 │   └─ inline-svg-1.svg
+├─ video-poster/
 ├─ favicon/
 └─ meta/
 ```
