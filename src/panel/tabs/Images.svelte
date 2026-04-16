@@ -53,15 +53,23 @@
 
   async function copyUrls(items: ImageItem[]) {
     const result = buildUrlList(items);
-    await navigator.clipboard.writeText(result.text);
     const skipNote = result.skipped > 0 ? ` (${result.skipped} inline SVGs skipped)` : '';
-    showToast(`Copied ${result.count} URLs${skipNote}`);
+    try {
+      await navigator.clipboard.writeText(result.text);
+      showToast(`Copied ${result.count} URLs${skipNote}`);
+    } catch {
+      showToast('Copy failed — click inside the panel first');
+    }
   }
 
   async function copyCsv(items: ImageItem[]) {
     const csv = buildCsv(items);
-    await navigator.clipboard.writeText(csv);
-    showToast(`Copied ${items.length} rows as CSV`);
+    try {
+      await navigator.clipboard.writeText(csv);
+      showToast(`Copied ${items.length} rows as CSV`);
+    } catch {
+      showToast('Copy failed — click inside the panel first');
+    }
   }
 
   function scrollToImage(item: ImageItem) {
