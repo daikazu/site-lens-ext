@@ -2,7 +2,7 @@
   import type { ImagesData, ImageItem, ImageSource } from '../../shared/types';
   import Badge from '../components/Badge.svelte';
   import ImagesTable from '../components/ImagesTable.svelte';
-  import { buildUrlList, buildCsv } from '../lib/image-export';
+  import { buildUrlList, buildCsv, buildZip, type ZipProgress } from '../lib/image-export';
 
   interface Props {
     data: ImagesData;
@@ -22,6 +22,58 @@
     toast = msg;
     if (toastTimer != null) window.clearTimeout(toastTimer);
     toastTimer = window.setTimeout(() => { toast = null; toastTimer = null; }, 3000);
+  }
+
+  let zipProgress = $state<ZipProgress | null>(null);
+  let zipController: AbortController | null = null;
+
+  async function downloadZip(items: ImageItem[]) {
+    if (zipProgress) return; // already running
+    if (items.length === 0) return;
+    zipController = new AbortController();
+    zipProgress = { fetched: 0, total: items.length, failures: 0 };
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      let hostname = 'page';
+      try { hostname = new URL(tab.url || '').hostname || 'page'; } catch {}
+
+      const result = await buildZip(
+        items,
+        hostname,
+        (p) => { zipProgress = p; },
+        zipController.signal
+      );
+      const url = URL.createObjectURL(result.blob);
+      const downloadId = await chrome.downloads.download({
+        url,
+        filename: result.filename,
+        saveAs: false,
+      });
+      // Revoke object URL once the download finishes
+      const listener = (delta: chrome.downloads.DownloadDelta) => {
+        if (delta.id === downloadId && delta.state?.current === 'complete') {
+          URL.revokeObjectURL(url);
+          chrome.downloads.onChanged.removeListener(listener);
+        }
+      };
+      chrome.downloads.onChanged.addListener(listener);
+      const failNote = result.failed > 0 ? ` (${result.failed} failed — see _manifest.txt)` : '';
+      showToast(`Downloaded ${result.succeeded} of ${items.length}${failNote}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === 'Aborted') {
+        showToast('Download cancelled');
+      } else {
+        showToast(`Download failed: ${msg}`);
+      }
+    } finally {
+      zipProgress = null;
+      zipController = null;
+    }
+  }
+
+  function cancelZip() {
+    zipController?.abort();
   }
 
   let filteredItems = $derived(data.items.filter((it) => activeSources.has(it.source)));
@@ -146,6 +198,20 @@
           As CSV
         </button>
       </div>
+      <div class="action-group">
+        <span class="action-label">Download ZIP:</span>
+        {#if zipProgress}
+          <span class="progress">Downloading {zipProgress.fetched} / {zipProgress.total}{#if zipProgress.failures > 0} · {zipProgress.failures} failed{/if}…</span>
+          <button class="action-btn" onclick={cancelZip}>Cancel</button>
+        {:else}
+          <button class="action-btn" onclick={() => downloadZip(filteredItems)} disabled={filteredItems.length === 0}>
+            All ({filteredItems.length})
+          </button>
+          <button class="action-btn" onclick={() => downloadZip(selectedItems)} disabled={selectedItems.length === 0}>
+            Selected ({selectedItems.length})
+          </button>
+        {/if}
+      </div>
     </div>
     {#if toast}
       <div class="toast">{toast}</div>
@@ -216,4 +282,8 @@
   }
   .section { padding: 10px 12px; border-bottom: 1px solid var(--border-color); }
   .section-title { color: var(--text-secondary); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .progress {
+    font-size: 11px;
+    color: var(--info-color);
+  }
 </style>
