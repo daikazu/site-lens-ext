@@ -160,14 +160,22 @@ function dataUriToBytes(dataUri: string): { bytes: Uint8Array; contentType: stri
   const meta = match[2] || '';
   const payload = match[3];
   if (meta.includes('base64')) {
-    const binary = atob(payload);
-    const arr = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
-    return { bytes: arr, contentType };
+    try {
+      const binary = atob(payload);
+      const arr = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
+      return { bytes: arr, contentType };
+    } catch {
+      return null;
+    }
   }
   // utf8 / url-encoded data URI (e.g. inline SVG)
-  const text = decodeURIComponent(payload);
-  return { bytes: new TextEncoder().encode(text), contentType };
+  try {
+    const text = decodeURIComponent(payload);
+    return { bytes: new TextEncoder().encode(text), contentType };
+  } catch {
+    return null;
+  }
 }
 
 export async function buildZip(
