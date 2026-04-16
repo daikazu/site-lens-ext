@@ -44,7 +44,7 @@
   }
 
   function scrollToImage(item: ImageItem) {
-    const srcJson = JSON.stringify(item.src);
+    const srcJson = JSON.stringify(item.src).replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
     chrome.devtools.inspectedWindow.eval(
       `(function() {
         var STYLE_ID = 'seo-ext-img-highlight-style';
@@ -102,7 +102,7 @@
     </div>
     <div class="status-line">
       Showing {filteredItems.length} of {data.items.length} images
-      {#if selectedSrcs.size > 0} · {selectedItems.length} selected{/if}
+      {#if selectedItems.length > 0} · {selectedItems.length} selected{/if}
     </div>
     <!-- Export buttons wired in Tasks 9 & 10 -->
     <div class="actions" id="extract-actions-placeholder"></div>

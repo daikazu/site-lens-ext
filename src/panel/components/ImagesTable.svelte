@@ -59,6 +59,7 @@
           <input
             type="checkbox"
             checked={allSelected}
+            disabled={items.length === 0}
             onchange={() => onToggleAll(allSelected)}
             aria-label="Select all"
           />
