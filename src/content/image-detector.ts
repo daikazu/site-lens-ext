@@ -88,9 +88,11 @@ function detectCssBackgrounds(): ImageItem[] {
 function detectInlineSvg(): ImageItem[] {
   const out: ImageItem[] = [];
   const serializer = new XMLSerializer();
-  document.querySelectorAll('svg').forEach((el, i) => {
+  let svgCount = 0;
+  document.querySelectorAll('svg').forEach((el) => {
     // Only top-level SVGs (skip nested SVGs whose parent is also SVG)
     if (el.parentElement?.closest('svg')) return;
+    svgCount++;
     const markup = serializer.serializeToString(el);
     const dataUri = 'data:image/svg+xml;utf8,' + encodeURIComponent(markup);
     const widthAttr = el.getAttribute('width');
@@ -101,7 +103,7 @@ function detectInlineSvg(): ImageItem[] {
         source: 'svg',
         width: widthAttr ? parseInt(widthAttr, 10) || null : null,
         height: heightAttr ? parseInt(heightAttr, 10) || null : null,
-        alt: el.getAttribute('aria-label') ?? `inline-svg-${i + 1}`,
+        alt: el.getAttribute('aria-label') ?? `inline-svg-${svgCount}`,
       })
     );
   });
