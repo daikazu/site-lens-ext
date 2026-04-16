@@ -4,13 +4,12 @@
   interface Props {
     items: ImageItem[];
     selectedSrcs: Set<string>;
-    maxHeight?: string;
     onToggleRow: (item: ImageItem) => void;
     onToggleAll: (allSelected: boolean) => void;
     onScrollTo: (item: ImageItem) => void;
   }
 
-  let { items, selectedSrcs, maxHeight = '400px', onToggleRow, onToggleAll, onScrollTo }: Props = $props();
+  let { items, selectedSrcs, onToggleRow, onToggleAll, onScrollTo }: Props = $props();
 
   type SortKey = 'src' | 'source' | 'alt' | 'width' | 'height' | 'loading';
   let sortKey = $state<SortKey | null>(null);
@@ -51,7 +50,7 @@
   };
 </script>
 
-<div class="table-wrapper" style="max-height: {maxHeight}">
+<div class="table-wrapper">
   <table>
     <thead>
       <tr>
@@ -122,6 +121,8 @@
 
 <style>
   .table-wrapper {
+    flex: 1;
+    min-height: 0;
     overflow: auto;
     border: 1px solid var(--border-color);
     border-radius: 4px;

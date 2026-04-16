@@ -245,12 +245,11 @@
     {/if}
   </section>
 
-  <section class="section">
+  <section class="section table-section">
     <h3 class="section-title">Page Images</h3>
     <ImagesTable
       items={filteredItems}
       selectedSrcs={selectedSrcs}
-      maxHeight="500px"
       onToggleRow={toggleRow}
       onToggleAll={toggleAll}
       onScrollTo={scrollToImage}
@@ -259,7 +258,9 @@
 </div>
 
 <style>
-  .images-tab { display: flex; flex-direction: column; gap: 4px; }
+  .images-tab { display: flex; flex-direction: column; gap: 4px; height: 100%; min-height: 0; }
+  .table-section { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .table-section .section-title { flex-shrink: 0; }
   .warnings { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid var(--border-color); }
   .warning-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
   .extract-panel {
