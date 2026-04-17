@@ -185,7 +185,7 @@ export type MessageType =
   | { type: 'CLEAR_HIGHLIGHTS'; tabId: number };
 
 export type FetchImageResponse =
-  | { ok: true; bytes: ArrayBuffer; contentType: string; status: number }
+  | { ok: true; bytesB64: string; contentType: string; status: number }
   | { ok: false; error: string; status?: number };
 
 export type HighlightMode = 'internal' | 'external' | 'nofollow' | 'broken' | 'all' | 'none';

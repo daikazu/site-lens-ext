@@ -117,7 +117,18 @@ function uniqueName(base: string, ext: string, taken: Set<string>): string {
   return candidate;
 }
 
-function fetchImageBytes(url: string, signal: AbortSignal): Promise<FetchImageResponse> {
+type FetchedImage =
+  | { ok: true; bytes: Uint8Array; contentType: string }
+  | { ok: false; error: string };
+
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
+}
+
+function fetchImageBytes(url: string, signal: AbortSignal): Promise<FetchedImage> {
   return new Promise((resolve) => {
     if (signal.aborted) {
       resolve({ ok: false, error: 'Aborted' });
@@ -131,7 +142,19 @@ function fetchImageBytes(url: string, signal: AbortSignal): Promise<FetchImageRe
         resolve({ ok: false, error: chrome.runtime.lastError.message || 'runtime error' });
         return;
       }
-      resolve(res);
+      if (!res) {
+        resolve({ ok: false, error: 'No response' });
+        return;
+      }
+      if (!res.ok) {
+        resolve({ ok: false, error: res.error });
+        return;
+      }
+      try {
+        resolve({ ok: true, bytes: base64ToBytes(res.bytesB64), contentType: res.contentType });
+      } catch (err) {
+        resolve({ ok: false, error: err instanceof Error ? err.message : 'decode failed' });
+      }
     });
   });
 }

@@ -82,8 +82,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return;
         }
         const contentType = res.headers.get('content-type') || 'application/octet-stream';
-        const bytes = await res.arrayBuffer();
-        sendResponse({ ok: true, bytes, contentType, status: res.status });
+        const buffer = await res.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        const CHUNK = 0x8000;
+        for (let i = 0; i < bytes.length; i += CHUNK) {
+          binary += String.fromCharCode.apply(
+            null,
+            Array.from(bytes.subarray(i, i + CHUNK))
+          );
+        }
+        const bytesB64 = btoa(binary);
+        sendResponse({ ok: true, bytesB64, contentType, status: res.status });
       })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
