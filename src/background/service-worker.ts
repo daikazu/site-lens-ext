@@ -1,3 +1,5 @@
+import type { LinkCheckResult } from '../shared/types';
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'FONT_INSPECTOR_DISABLED' && sender.tab?.id) {
     chrome.action.setBadgeText({ tabId: sender.tab.id, text: '' });
@@ -57,18 +59,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'DEEP_SCAN_LINKS') {
-    const results: Record<string, { status: number; redirectUrl?: string }> = {};
-    Promise.all(
-      message.urls.map((url: string) =>
-        fetch(url, { method: 'HEAD', redirect: 'follow' })
-          .then((res) => {
-            results[url] = { status: res.status, redirectUrl: res.url !== url ? res.url : undefined };
-          })
-          .catch(() => {
-            results[url] = { status: 0 };
-          })
-      )
-    ).then(() => sendResponse(results));
+    checkLinks(message.urls).then(sendResponse);
     return true;
   }
 
@@ -171,5 +162,40 @@ async function analyzeTab(tabId: number): Promise<unknown> {
       const reason = err instanceof Error ? err.message : String(err);
       return { error: `Could not analyze this page (${reason}). Try reloading the page.` };
     }
+  }
+}
+
+const LINK_CHECK_CONCURRENCY = 6;
+const LINK_CHECK_TIMEOUT_MS = 10_000;
+
+async function checkLinks(urls: string[]): Promise<Record<string, LinkCheckResult>> {
+  const queue = [...new Set(urls)].filter((u) => /^https?:/i.test(u));
+  const results: Record<string, LinkCheckResult> = {};
+  const worker = async () => {
+    for (let url = queue.shift(); url; url = queue.shift()) {
+      results[url] = await checkLink(url);
+    }
+  };
+  await Promise.all(Array.from({ length: LINK_CHECK_CONCURRENCY }, worker));
+  return results;
+}
+
+async function checkLink(url: string): Promise<LinkCheckResult> {
+  const request = async (method: 'HEAD' | 'GET') => {
+    const res = await fetch(url, { method, redirect: 'follow', signal: AbortSignal.timeout(LINK_CHECK_TIMEOUT_MS) });
+    if (method === 'GET') res.body?.cancel().catch(() => {});
+    return res;
+  };
+  try {
+    let res = await request('HEAD');
+    // Some servers reject or mishandle HEAD; confirm with GET before calling the link broken.
+    if (res.status >= 400) res = await request('GET');
+    return {
+      status: res.status,
+      redirected: res.redirected,
+      finalUrl: res.redirected ? res.url : undefined,
+    };
+  } catch (err) {
+    return { status: 0, redirected: false, error: err instanceof Error ? err.message : String(err) };
   }
 }

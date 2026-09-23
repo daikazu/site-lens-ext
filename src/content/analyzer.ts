@@ -163,6 +163,20 @@ function getNgramDensity(
     }));
 }
 
+// The text search engines and screen readers use for a link: visible text, then aria-label,
+// then image alt text, then title.
+function linkText(el: Element): string {
+  const text = el.textContent?.replace(/\s+/g, ' ').trim();
+  if (text) return text;
+  const aria = el.getAttribute('aria-label')?.trim();
+  if (aria) return aria;
+  const alt = Array.from(el.querySelectorAll('img[alt]'))
+    .map((img) => img.getAttribute('alt')?.trim())
+    .find(Boolean);
+  if (alt) return alt;
+  return el.getAttribute('title')?.trim() || '';
+}
+
 function analyzeLinks(): AnalysisResult['links'] {
   const links = document.querySelectorAll('a[href]');
   const currentOrigin = window.location.origin;
@@ -172,32 +186,27 @@ function analyzeLinks(): AnalysisResult['links'] {
 
   links.forEach((el) => {
     const href = el.getAttribute('href') || '';
-    const anchorText = el.textContent?.trim() || '';
+    const anchorText = linkText(el);
     const rel = el.getAttribute('rel') || '';
     const hasNofollow = rel.includes('nofollow');
 
     const issues: string[] = [];
 
-    const isBad =
-      href === '' ||
-      href === '#' ||
-      href.startsWith('javascript:') ||
-      href === 'about:blank';
-
-    if (isBad) {
-      if (href === '' || href === '#') issues.push('Empty or fragment-only href');
-      if (href.startsWith('javascript:')) issues.push('JavaScript href');
+    if (href === '' || href === '#' || href.startsWith('javascript:') || href === 'about:blank') {
+      if (href === '') issues.push('Empty href');
+      else if (href === '#') issues.push('href="#" goes nowhere (use a <button> for actions)');
+      else if (href.startsWith('javascript:')) issues.push('javascript: href (not crawlable)');
+      else issues.push('about:blank href');
       bad.push({ href, anchorText, rel, isInternal: false, isExternal: false, hasNofollow, issues });
       return;
     }
 
-    if (!anchorText && !el.querySelector('img')) {
-      issues.push('No anchor text');
-    }
-
     try {
       const url = new URL(href, window.location.href);
-      const isInt = url.origin === currentOrigin;
+      const isWeb = url.protocol === 'http:' || url.protocol === 'https:';
+      const isInt = isWeb && url.origin === currentOrigin;
+
+      if (!anchorText) issues.push('No anchor text');
 
       const item = {
         href: url.href,
@@ -209,12 +218,8 @@ function analyzeLinks(): AnalysisResult['links'] {
         issues,
       };
 
-      if (isInt) {
-        internal.push(item);
-      } else {
-        if (!hasNofollow) issues.push('External link without nofollow');
-        external.push(item);
-      }
+      if (isInt) internal.push(item);
+      else external.push(item);
     } catch {
       issues.push('Malformed URL');
       bad.push({ href, anchorText, rel, isInternal: false, isExternal: false, hasNofollow, issues });
@@ -223,15 +228,10 @@ function analyzeLinks(): AnalysisResult['links'] {
 
   const warnings: string[] = [];
   const totalCount = internal.length + external.length + bad.length;
-  if (totalCount > 100) warnings.push(`High link count: ${totalCount} links on page`);
-  if (bad.length > 0) warnings.push(`${bad.length} problematic link(s) found`);
+  if (bad.length > 0) warnings.push(`${bad.length} link(s) with an unusable href (see the Bad list)`);
 
-  const hrefCounts: Record<string, number> = {};
-  [...internal, ...external].forEach((l) => {
-    hrefCounts[l.href] = (hrefCounts[l.href] || 0) + 1;
-  });
-  const dupes = Object.entries(hrefCounts).filter(([, c]) => c > 1);
-  if (dupes.length > 0) warnings.push(`${dupes.length} duplicate link(s) found`);
+  const noText = [...internal, ...external].filter((l) => l.issues.includes('No anchor text')).length;
+  if (noText > 0) warnings.push(`${noText} link(s) with no anchor text, aria-label, title, or image alt`);
 
   return { internal, external, bad, warnings, totalCount };
 }

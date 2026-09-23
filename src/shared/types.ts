@@ -52,6 +52,13 @@ export interface LinkItem {
   issues: string[];
 }
 
+export interface LinkCheckResult {
+  status: number; // 0 = unreachable (network error, DNS, timeout)
+  redirected: boolean;
+  finalUrl?: string;
+  error?: string;
+}
+
 export interface LinksData {
   internal: LinkItem[];
   external: LinkItem[];

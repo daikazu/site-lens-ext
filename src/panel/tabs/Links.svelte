@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { LinksData, HighlightMode } from '../../shared/types';
+  import type { LinksData, HighlightMode, LinkCheckResult, LinkItem } from '../../shared/types';
   import Badge from '../components/Badge.svelte';
   import SortableTable from '../components/SortableTable.svelte';
 
@@ -13,14 +13,41 @@
   let activeSection = $state<'internal' | 'external' | 'bad'>('internal');
   let highlightMode = $state<HighlightMode>('none');
   let deepScanning = $state(false);
-  let deepScanResults = $state<Record<string, { status: number; redirectUrl?: string }>>({});
+  let deepScanResults = $state<Record<string, LinkCheckResult> | null>(null);
+  let statusFilter = $state<'broken' | 'redirected' | null>(null);
 
-  const linkColumns = [
-    { key: 'anchorText', label: 'Anchor Text', width: '30%' },
-    { key: 'href', label: 'URL', width: '45%' },
+  function statusLabel(result: LinkCheckResult | undefined): string {
+    if (!result) return '';
+    if (result.status === 0) return 'Unreachable';
+    if (result.redirected) return `Redirect → ${result.status}`;
+    return String(result.status);
+  }
+
+  function isBroken(r: LinkCheckResult) {
+    return r.status === 0 || r.status >= 400;
+  }
+
+  function isRedirected(r: LinkCheckResult) {
+    return !isBroken(r) && r.redirected;
+  }
+
+  const linkColumns = $derived([
+    { key: 'anchorText', label: 'Anchor Text', width: deepScanResults ? '25%' : '30%' },
+    { key: 'href', label: 'URL', width: deepScanResults ? '40%' : '45%' },
+    ...(deepScanResults ? [{ key: 'status', label: 'Status', width: '12%' }] : []),
     { key: 'rel', label: 'Rel', width: '10%' },
     { key: 'issues', label: 'Issues', width: '15%', render: (v: unknown) => (v as string[]).join(', ') },
-  ];
+  ]);
+
+  const scanSummary = $derived.by(() => {
+    if (!deepScanResults) return null;
+    const results = Object.values(deepScanResults);
+    return {
+      checked: results.length,
+      broken: results.filter(isBroken).length,
+      redirected: results.filter(isRedirected).length,
+    };
+  });
 
   function toggleHighlight(mode: HighlightMode) {
     highlightMode = highlightMode === mode ? 'none' : mode;
@@ -33,16 +60,44 @@
   async function deepScan() {
     deepScanning = true;
     const allUrls = [...data.internal, ...data.external].map((l) => l.href);
-    const response = await chrome.runtime.sendMessage({
-      type: 'DEEP_SCAN_LINKS',
-      tabId,
-      urls: allUrls,
-    });
-    deepScanResults = response || {};
-    deepScanning = false;
+    statusFilter = null;
+    try {
+      deepScanResults = (await chrome.runtime.sendMessage({ type: 'DEEP_SCAN_LINKS', tabId, urls: allUrls })) || {};
+    } finally {
+      deepScanning = false;
+    }
   }
 
-  let currentRows = $derived(data[activeSection]);
+  function withScanResult(link: LinkItem): Record<string, unknown> {
+    const result = deepScanResults?.[link.href];
+    const issues = [...link.issues];
+    if (result && isBroken(result)) issues.push(result.status === 0 ? `Unreachable: ${result.error ?? 'no response'}` : `Broken (${result.status})`);
+    if (result?.redirected && result.finalUrl) issues.push(`Redirects to ${result.finalUrl}`);
+    return { ...link, status: statusLabel(result), issues };
+  }
+
+  // A status filter spans internal and external links, since a broken link can be in either list.
+  let currentRows = $derived.by(() => {
+    if (statusFilter && deepScanResults) {
+      const matches = statusFilter === 'broken' ? isBroken : isRedirected;
+      return [...data.internal, ...data.external]
+        .filter((l) => {
+          const r = deepScanResults?.[l.href];
+          return r && matches(r);
+        })
+        .map(withScanResult);
+    }
+    return data[activeSection].map(withScanResult);
+  });
+
+  function selectSection(section: typeof activeSection) {
+    activeSection = section;
+    statusFilter = null;
+  }
+
+  function toggleStatusFilter(filter: 'broken' | 'redirected') {
+    statusFilter = statusFilter === filter ? null : filter;
+  }
 
   function scrollToLink(row: Record<string, unknown>) {
     const href = String(row.href || '');
@@ -104,13 +159,13 @@
 
   <section class="toolbar">
     <div class="section-tabs">
-      <button class:active={activeSection === 'internal'} onclick={() => activeSection = 'internal'}>
+      <button class:active={!statusFilter && activeSection === 'internal'} onclick={() => selectSection('internal')}>
         Internal ({data.internal.length})
       </button>
-      <button class:active={activeSection === 'external'} onclick={() => activeSection = 'external'}>
+      <button class:active={!statusFilter && activeSection === 'external'} onclick={() => selectSection('external')}>
         External ({data.external.length})
       </button>
-      <button class:active={activeSection === 'bad'} onclick={() => activeSection = 'bad'}>
+      <button class:active={!statusFilter && activeSection === 'bad'} onclick={() => selectSection('bad')}>
         Bad ({data.bad.length})
       </button>
     </div>
@@ -123,10 +178,39 @@
       <button class="hl-btn hl-all" class:active={highlightMode === 'all'} onclick={() => toggleHighlight('all')}>All</button>
     </div>
 
-    <button class="deep-scan-btn" onclick={deepScan} disabled={deepScanning}>
-      {deepScanning ? 'Scanning...' : 'Deep Scan'}
+    <button
+      class="deep-scan-btn"
+      onclick={deepScan}
+      disabled={deepScanning}
+      title="Request every internal and external link and report its HTTP status, broken links, and redirects"
+    >
+      {deepScanning ? 'Checking links…' : deepScanResults ? 'Re-check Links' : 'Check Link Status'}
     </button>
   </section>
+
+  {#if scanSummary}
+    <section class="scan-summary">
+      <span>Checked {scanSummary.checked} unique URL(s):</span>
+      {#if scanSummary.broken > 0}
+        <button class="filter-btn filter-broken" class:active={statusFilter === 'broken'} onclick={() => toggleStatusFilter('broken')}>
+          {scanSummary.broken} broken
+        </button>
+      {/if}
+      {#if scanSummary.redirected > 0}
+        <button class="filter-btn filter-redirected" class:active={statusFilter === 'redirected'} onclick={() => toggleStatusFilter('redirected')}>
+          {scanSummary.redirected} redirected
+        </button>
+      {/if}
+      {#if scanSummary.broken === 0 && scanSummary.redirected === 0}<Badge type="success" label="All OK" />{/if}
+      {#if statusFilter}
+        <span class="filter-note">Showing {statusFilter} links from all sections ·
+          <button class="link-btn" onclick={() => (statusFilter = null)}>clear</button>
+        </span>
+      {:else if scanSummary.broken + scanSummary.redirected > 0}
+        <span class="filter-note">Click to show them</span>
+      {/if}
+    </section>
+  {/if}
 
   <section class="section">
     <SortableTable columns={linkColumns} rows={currentRows} maxHeight="500px" onRowClick={scrollToLink} />
@@ -173,5 +257,22 @@
   }
   .deep-scan-btn:hover { background: var(--bg-hover); }
   .deep-scan-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .scan-summary {
+    display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+    font-size: 12px; color: var(--text-secondary);
+  }
+  .filter-btn {
+    background: none; border: 1px solid; font-size: 11px; padding: 1px 8px;
+    border-radius: 3px; cursor: pointer;
+  }
+  .filter-broken { color: #f14c4c; border-color: #f14c4c66; }
+  .filter-redirected { color: #cca700; border-color: #cca70066; }
+  .filter-broken.active { background: #f14c4c22; border-color: #f14c4c; }
+  .filter-redirected.active { background: #cca70022; border-color: #cca700; }
+  .filter-note { color: var(--text-muted); font-size: 11px; }
+  .link-btn {
+    background: none; border: none; padding: 0; color: var(--accent-color);
+    font-size: 11px; cursor: pointer; text-decoration: underline;
+  }
   .section { padding: 0 12px 12px; }
 </style>
