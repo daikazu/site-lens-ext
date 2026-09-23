@@ -2,6 +2,7 @@ import type { AnalysisResult, ResourceCategory, ResourceCategoryName } from '../
 import { highlightLinks, clearHighlights } from './highlighter';
 import { toggleFontInspector, disableFontInspector } from './font-inspector';
 import { toggleElementCopier, disableElementCopier } from './element-copier';
+import { toggleImageInspector, disableImageInspector } from './image-inspector';
 import { setBlur, toggleGrayscale, setColorBlindness, getState as getVisionState, resetAll as resetVision } from './vision-simulator';
 import { ALT_ISSUES, PRIORITY_ISSUES, detectImages } from './image-detector';
 import { performanceMetrics } from './perf';
@@ -534,12 +535,20 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (message.type === 'TOGGLE_FONT_INSPECTOR') {
     disableElementCopier();
+    disableImageInspector();
     const isActive = toggleFontInspector();
     sendResponse({ active: isActive });
   }
   if (message.type === 'TOGGLE_ELEMENT_COPIER') {
     disableFontInspector();
+    disableImageInspector();
     const isActive = toggleElementCopier();
+    sendResponse({ active: isActive });
+  }
+  if (message.type === 'TOGGLE_IMAGE_INSPECTOR') {
+    disableFontInspector();
+    disableElementCopier();
+    const isActive = toggleImageInspector();
     sendResponse({ active: isActive });
   }
   if (message.type === 'SET_BLUR') {

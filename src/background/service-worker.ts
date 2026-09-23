@@ -6,6 +6,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  if (message.type === 'IMAGE_INSPECTOR_DISABLED' && sender.tab?.id) {
+    chrome.action.setBadgeText({ tabId: sender.tab.id, text: '' });
+    return false;
+  }
+
   if (message.type === 'ELEMENT_COPIER_DISABLED' && sender.tab?.id) {
     chrome.action.setBadgeText({ tabId: sender.tab.id, text: '' });
     return false;

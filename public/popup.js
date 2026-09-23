@@ -2,6 +2,7 @@
 
 let fontActive = false;
 let copierActive = false;
+let imageActive = false;
 let grayActive = false;
 let activeCb = null;
 
@@ -45,10 +46,12 @@ document.getElementById('font-toggle').addEventListener('click', () => {
     if (!res) return;
     fontActive = res.active;
     document.getElementById('font-toggle').classList.toggle('active', fontActive);
-    // Mutual exclusion: if font inspector is now active, copier is off
+    // Mutual exclusion: if font inspector is now active, the other tools are off
     if (fontActive) {
       copierActive = false;
+      imageActive = false;
       document.getElementById('copier-toggle').classList.remove('active');
+      document.getElementById('image-toggle').classList.remove('active');
     }
     getTab().then(tab => {
       if (tab && tab.id) {
@@ -65,15 +68,39 @@ document.getElementById('copier-toggle').addEventListener('click', () => {
     if (!res) return;
     copierActive = res.active;
     document.getElementById('copier-toggle').classList.toggle('active', copierActive);
-    // Mutual exclusion: if copier is now active, font inspector is off
+    // Mutual exclusion: if copier is now active, the other tools are off
     if (copierActive) {
       fontActive = false;
+      imageActive = false;
       document.getElementById('font-toggle').classList.remove('active');
+      document.getElementById('image-toggle').classList.remove('active');
     }
     getTab().then(tab => {
       if (tab && tab.id) {
         chrome.action.setBadgeText({ tabId: tab.id, text: copierActive ? 'ON' : '' });
         chrome.action.setBadgeBackgroundColor({ tabId: tab.id, color: '#f0b429' });
+      }
+    });
+  });
+});
+
+// Image Inspector toggle
+document.getElementById('image-toggle').addEventListener('click', () => {
+  sendToTab({ type: 'TOGGLE_IMAGE_INSPECTOR' }).then(res => {
+    if (!res) return;
+    imageActive = res.active;
+    document.getElementById('image-toggle').classList.toggle('active', imageActive);
+    // Mutual exclusion: if image inspector is now active, the other tools are off
+    if (imageActive) {
+      fontActive = false;
+      copierActive = false;
+      document.getElementById('font-toggle').classList.remove('active');
+      document.getElementById('copier-toggle').classList.remove('active');
+    }
+    getTab().then(tab => {
+      if (tab && tab.id) {
+        chrome.action.setBadgeText({ tabId: tab.id, text: imageActive ? 'ON' : '' });
+        chrome.action.setBadgeBackgroundColor({ tabId: tab.id, color: '#4ec9b0' });
       }
     });
   });
@@ -129,6 +156,15 @@ document.getElementById('reset-btn').addEventListener('click', () => {
     sendToTab({ type: 'TOGGLE_ELEMENT_COPIER' }).then(() => {
       copierActive = false;
       document.getElementById('copier-toggle').classList.remove('active');
+      getTab().then(tab => {
+        if (tab && tab.id) chrome.action.setBadgeText({ tabId: tab.id, text: '' });
+      });
+    });
+  }
+  if (imageActive) {
+    sendToTab({ type: 'TOGGLE_IMAGE_INSPECTOR' }).then(() => {
+      imageActive = false;
+      document.getElementById('image-toggle').classList.remove('active');
       getTab().then(tab => {
         if (tab && tab.id) chrome.action.setBadgeText({ tabId: tab.id, text: '' });
       });

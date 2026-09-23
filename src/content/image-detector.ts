@@ -20,14 +20,14 @@ export const PRIORITY_ISSUES = {
 // A couple of high-priority images (e.g. a two-up hero) is reasonable; more dilutes the hint.
 const MAX_HIGH_PRIORITY = 2;
 
-function isAboveFold(rect: DOMRect): boolean {
+export function isAboveFold(rect: DOMRect): boolean {
   return rect.top + window.scrollY < window.innerHeight;
 }
 
 // The <img> that should get fetchpriority="high": the reported LCP element when it's an image,
 // otherwise (no usable LCP data) the largest image visible on page load. Null when the LCP is text or a
 // CSS background, since fetchpriority can't be set on those.
-function findLcpImage(): HTMLImageElement | null {
+export function findLcpImage(): HTMLImageElement | null {
   // Soft navigations (SPA route changes) don't produce new LCP entries, so a detached element
   // means the data is stale; fall back to the heuristic.
   if (lcp.observed && lcp.element?.isConnected) {
@@ -48,6 +48,10 @@ function findLcpImage(): HTMLImageElement | null {
   return best;
 }
 
+
+export function highPriorityCount(): number {
+  return document.querySelectorAll('img[fetchpriority="high" i]').length;
+}
 
 function makeItem(partial: Partial<ImageItem> & { src: string; source: ImageSource }): ImageItem {
   return {
@@ -70,7 +74,7 @@ export const ALT_ISSUES = {
 
 // Decorative images are hidden with aria-hidden (on the image or an ancestor) or role="presentation"/"none".
 // Those should carry alt="" so browsers and crawlers that ignore ARIA still treat them as decorative.
-function altTextIssue(el: HTMLImageElement): string | null {
+export function altTextIssue(el: HTMLImageElement): string | null {
   const alt = el.getAttribute('alt');
   const role = el.getAttribute('role');
   const decorative = !!el.closest('[aria-hidden="true"]') || role === 'presentation' || role === 'none';
@@ -85,7 +89,7 @@ function altTextIssue(el: HTMLImageElement): string | null {
 // - Other images visible on page load should load eagerly (the default), not lazily.
 // - Images further down should be lazy, and never high priority.
 // Hidden or zero-size images are skipped since their position says nothing about when they're needed.
-function loadingIssues(el: HTMLImageElement, lcpImage: HTMLImageElement | null, highCount: number): string[] {
+export function loadingIssues(el: HTMLImageElement, lcpImage: HTMLImageElement | null, highCount: number): string[] {
   const rect = el.getBoundingClientRect();
   if (rect.width === 0 || rect.height === 0) return [];
 
@@ -113,7 +117,7 @@ function isHidden(el: Element): boolean {
 
 const INTERACTIVE = 'a[href], button, [role="button"], [role="link"]';
 
-function imgRole(el: HTMLImageElement): ImageRole {
+export function imgRole(el: HTMLImageElement): ImageRole {
   const alt = el.getAttribute('alt');
   if (isHidden(el) || (alt !== null && alt.trim() === '')) return 'decorative';
   const named = alt?.trim() || el.getAttribute('aria-label')?.trim() || el.getAttribute('aria-labelledby');
@@ -121,7 +125,7 @@ function imgRole(el: HTMLImageElement): ImageRole {
   return el.closest(INTERACTIVE) ? 'functional' : 'content';
 }
 
-function svgRole(el: SVGSVGElement): ImageRole {
+export function svgRole(el: SVGSVGElement): ImageRole {
   if (isHidden(el)) return 'decorative';
   const named =
     el.getAttribute('aria-label')?.trim() ||
@@ -137,7 +141,7 @@ function svgRole(el: SVGSVGElement): ImageRole {
 function detectImg(): ImageItem[] {
   const out: ImageItem[] = [];
   const lcpImage = findLcpImage();
-  const highCount = document.querySelectorAll('img[fetchpriority="high" i]').length;
+  const highCount = highPriorityCount();
   document.querySelectorAll('img').forEach((el) => {
     const raw = el.getAttribute('src') || el.getAttribute('data-src') || '';
     if (!raw) return;
@@ -175,7 +179,7 @@ function detectPicture(): ImageItem[] {
   return out;
 }
 
-function parseCssUrls(value: string): string[] {
+export function parseCssUrls(value: string): string[] {
   const urls: string[] = [];
   const re = /url\(\s*(?:"([^"]+)"|'([^']+)'|([^)]+?))\s*\)/g;
   let m: RegExpExecArray | null;
