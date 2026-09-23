@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { SchemaData } from '../../shared/types';
+  import type { SchemaData, SchemaItem } from '../../shared/types';
   import Badge from '../components/Badge.svelte';
   import CodeBlock from '../components/CodeBlock.svelte';
 
@@ -29,6 +29,29 @@
   // Skip @context everywhere, and @type when it is already shown in the parent's header.
   function entries(obj: SchemaObject, skipType: boolean): [string, unknown][] {
     return Object.entries(obj).filter(([k]) => k !== '@context' && !(skipType && k === '@type'));
+  }
+
+  let testStatus = $state<{ target: number | 'all'; message: string } | null>(null);
+
+  function itemCode(item: SchemaItem): string {
+    const body = item.issues.length === 0 ? JSON.stringify(item.parsed, null, 2) : item.raw;
+    // Split the closing tag so it doesn't terminate this component's <script> block.
+    return `<script type="application/ld+json">\n${body}\n<${'/'}script>`;
+  }
+
+  const jsonLdItems = $derived(data.items.filter((i) => i.format === 'json-ld'));
+
+  // Copy to the clipboard as a fallback in case Google's editor markup changes and the fill fails.
+  async function testInGoogle(items: SchemaItem[], target: number | 'all') {
+    const code = items.map(itemCode).join('\n\n');
+    try { await navigator.clipboard.writeText(code); } catch { /* clipboard may be unavailable */ }
+    testStatus = { target, message: 'Opening…' };
+    const res = await chrome.runtime.sendMessage({ type: 'OPEN_RICH_RESULTS_TEST', code });
+    testStatus = {
+      target,
+      message: res?.ok && res.filled ? 'Opened — click "Test code"' : 'Could not auto-fill — code copied, paste it in',
+    };
+    setTimeout(() => { if (testStatus?.target === target) testStatus = null; }, 4000);
   }
 
   function graphNodes(parsed: SchemaObject): SchemaObject[] | null {
@@ -79,6 +102,15 @@
 {/snippet}
 
 <div class="schema-tab">
+  {#if jsonLdItems.length > 0}
+    <div class="toolbar">
+      <button class="test-btn" onclick={() => testInGoogle(jsonLdItems, 'all')}>
+        Test all JSON-LD in Rich Results Test ↗
+      </button>
+      {#if testStatus?.target === 'all'}<span class="test-status">{testStatus.message}</span>{/if}
+    </div>
+  {/if}
+
   {#if data.warnings.length > 0}
     <section class="warnings">
       {#each data.warnings as warning}
@@ -99,6 +131,12 @@
           <Badge type="error" label="{item.issues.length} issue(s)" />
         {:else}
           <Badge type="success" label="Valid" />
+        {/if}
+        {#if item.format === 'json-ld'}
+          <span class="header-actions">
+            {#if testStatus?.target === i}<span class="test-status">{testStatus.message}</span>{/if}
+            <button class="test-btn" onclick={() => testInGoogle([item], i)}>Test in Google ↗</button>
+          </span>
         {/if}
       </div>
 
@@ -153,6 +191,17 @@
   .warning-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
   .schema-item { padding: 10px 12px; border-bottom: 1px solid var(--border-color); }
   .schema-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .toolbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; border-bottom: 1px solid var(--border-color);
+  }
+  .header-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .test-btn {
+    background: none; border: 1px solid var(--border-color); color: var(--text-secondary);
+    font-size: 11px; padding: 2px 8px; border-radius: 3px; cursor: pointer;
+  }
+  .test-btn:hover { color: var(--text-primary); border-color: var(--text-secondary); }
+  .test-status { color: var(--text-muted); font-size: 11px; }
   .schema-type { color: var(--text-primary); font-weight: 600; font-size: 13px; }
   .issues { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
   .issue-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }

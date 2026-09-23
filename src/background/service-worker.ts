@@ -10,9 +10,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'ANALYZE_PAGE') {
-    chrome.tabs.sendMessage(message.tabId, { type: 'ANALYZE_PAGE' }, (response) => {
-      sendResponse(response || { error: 'No response from content script' });
-    });
+    analyzeTab(message.tabId).then(sendResponse);
     return true;
   }
 
@@ -102,5 +100,76 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'OPEN_RICH_RESULTS_TEST') {
+    openRichResultsTest(message.code)
+      .then((filled) => sendResponse({ ok: true, filled }))
+      .catch((err: unknown) => sendResponse({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+    return true;
+  }
+
   return false;
 });
+
+const RICH_RESULTS_URL = 'https://search.google.com/test/rich-results';
+
+async function openRichResultsTest(code: string): Promise<boolean> {
+  const tab = await chrome.tabs.create({ url: RICH_RESULTS_URL });
+  if (!tab.id) return false;
+  await waitForTabLoad(tab.id);
+
+  // The editor is CodeMirror 5; its instance lives on the page's own JS objects, so run in the MAIN world.
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    world: 'MAIN',
+    args: [code],
+    func: async (code: string) => {
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      type CMElement = HTMLElement & { CodeMirror?: { setValue(v: string): void; focus(): void } };
+
+      for (let i = 0; i < 50; i++) {
+        const codeTab = Array.from(document.querySelectorAll<HTMLElement>('[role="tab"]'))
+          // Label is prefixed with an icon-font glyph (e.g. "\ue86fcode"), so match the suffix.
+          .find((t) => t.textContent?.trim().toLowerCase().endsWith('code'));
+        if (codeTab && codeTab.getAttribute('aria-selected') !== 'true') codeTab.click();
+
+        const editor = Array.from(document.querySelectorAll<CMElement>('.CodeMirror'))
+          .find((el) => el.offsetParent !== null && el.CodeMirror);
+        if (editor?.CodeMirror) {
+          editor.CodeMirror.setValue(code);
+          editor.CodeMirror.focus();
+          return true;
+        }
+        await sleep(200);
+      }
+      return false;
+    },
+  });
+  return result?.result === true;
+}
+
+function waitForTabLoad(tabId: number): Promise<void> {
+  return new Promise((resolve) => {
+    const listener = (id: number, info: { status?: string }) => {
+      if (id === tabId && info.status === 'complete') {
+        chrome.tabs.onUpdated.removeListener(listener);
+        resolve();
+      }
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+  });
+}
+
+// Tabs opened before the extension was (re)loaded have no content script, so inject it on demand.
+async function analyzeTab(tabId: number): Promise<unknown> {
+  try {
+    return await chrome.tabs.sendMessage(tabId, { type: 'ANALYZE_PAGE' });
+  } catch {
+    try {
+      await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+      return await chrome.tabs.sendMessage(tabId, { type: 'ANALYZE_PAGE' });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      return { error: `Could not analyze this page (${reason}). Try reloading the page.` };
+    }
+  }
+}
