@@ -42,13 +42,20 @@ body {
   height: 100%;
 }
 
+/* Tabs scroll sideways in narrow docked panels; Re-scan stays pinned to the right edge. */
 .tab-bar {
   display: flex;
   align-items: center;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
-  padding: 0 4px;
+  padding: 0 0 0 4px;
   flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tab-bar::-webkit-scrollbar {
+  display: none;
 }
 
 .tab {
@@ -61,6 +68,8 @@ body {
   cursor: pointer;
   border-bottom: 2px solid transparent;
   transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .tab:hover {
@@ -74,6 +83,11 @@ body {
 
 .rescan-btn {
   margin-left: auto;
+  position: sticky;
+  right: 4px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  box-shadow: -12px 0 8px -2px var(--bg-secondary);
   background: var(--bg-active);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
