@@ -27,7 +27,7 @@
     chrome.tabs.sendMessage(tabId, {
       type: highlightMode === 'none' ? 'CLEAR_HIGHLIGHTS' : 'HIGHLIGHT_LINKS',
       mode: highlightMode,
-    });
+    }).catch(() => { /* content script not present on this page */ });
   }
 
   async function deepScan() {
