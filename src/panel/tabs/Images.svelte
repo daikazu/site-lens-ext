@@ -1,7 +1,8 @@
 <script lang="ts">
-  import type { ImagesData, ImageItem, ImageSource } from '../../shared/types';
+  import type { ImagesData, ImageItem, ImageRole, ImageSource } from '../../shared/types';
   import Badge from '../components/Badge.svelte';
   import ImagesTable from '../components/ImagesTable.svelte';
+  import RoleIcon, { ROLE_INFO, ROLE_ORDER } from '../components/RoleIcon.svelte';
   import { buildUrlList, buildCsv, buildZip, type ZipProgress } from '../lib/image-export';
 
   interface Props {
@@ -15,6 +16,7 @@
   const DEFAULT_ON: ImageSource[] = ['img', 'picture', 'favicon', 'meta'];
 
   let activeSources = $state<Set<ImageSource>>(new Set(DEFAULT_ON));
+  let activeRoles = $state<Set<ImageRole>>(new Set(ROLE_ORDER));
   let selectedSrcs = $state<Set<string>>(new Set());
   let toast = $state<string | null>(null);
   let toastTimer: number | null = null;
@@ -103,7 +105,21 @@
     zipController?.abort();
   }
 
-  let filteredItems = $derived(data.items.filter((it) => activeSources.has(it.source)));
+  let sourceItems = $derived(data.items.filter((it) => activeSources.has(it.source)));
+  // Images without a role (favicons, meta, posters) aren't affected by the role filter.
+  let filteredItems = $derived(sourceItems.filter((it) => it.role === null || activeRoles.has(it.role)));
+  let roleCounts = $derived.by(() => {
+    const counts: Record<ImageRole, number> = { content: 0, functional: 0, decorative: 0, missing: 0 };
+    for (const it of sourceItems) if (it.role) counts[it.role]++;
+    return counts;
+  });
+
+  function toggleRole(role: ImageRole) {
+    const next = new Set(activeRoles);
+    if (next.has(role)) next.delete(role);
+    else next.add(role);
+    activeRoles = next;
+  }
   let selectedItems = $derived(filteredItems.filter((it) => selectedSrcs.has(it.src)));
 
   function toggleSource(s: ImageSource) {
@@ -208,6 +224,17 @@
         </label>
       {/each}
     </div>
+    <div class="filter-row">
+      <span class="filter-label">Role:</span>
+      {#each ROLE_ORDER as role}
+        <label class="filter-chip" title={ROLE_INFO[role].description}>
+          <input type="checkbox" checked={activeRoles.has(role)} onchange={() => toggleRole(role)} />
+          <RoleIcon {role} size={14} />
+          <span>{ROLE_INFO[role].label}</span>
+          <span class="chip-count">{roleCounts[role]}</span>
+        </label>
+      {/each}
+    </div>
     <div class="status-line">
       Showing {filteredItems.length} of {data.items.length} images
       {#if selectedItems.length > 0} · {selectedItems.length} selected{/if}
@@ -283,6 +310,9 @@
     background: var(--bg-primary); cursor: pointer;
   }
   .filter-chip input { margin: 0; cursor: pointer; }
+  .filter-row + .filter-row { margin-top: 6px; }
+  .filter-label { min-width: 52px; }
+  .chip-count { color: var(--text-muted); font-variant-numeric: tabular-nums; }
   .status-line { margin-top: 8px; font-size: 12px; color: var(--text-muted); }
   .actions { margin-top: 8px; display: flex; gap: 8px; }
   .action-group { display: inline-flex; align-items: center; gap: 6px; }

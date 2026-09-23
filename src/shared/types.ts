@@ -86,9 +86,14 @@ export type ImageSource =
   | 'favicon'
   | 'meta';
 
+// How assistive technology treats the image (W3C image categories). Null where it doesn't
+// apply: favicons, meta images, video posters, and <picture> sources.
+export type ImageRole = 'content' | 'functional' | 'decorative' | 'missing';
+
 export interface ImageItem {
   src: string;            // absolute URL or data: URI
   source: ImageSource;
+  role: ImageRole | null;
   alt: string;            // empty string if not applicable
   width: number | null;
   height: number | null;

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { ImageItem, ImageSource } from '../../shared/types';
+  import type { ImageItem, ImageRole, ImageSource } from '../../shared/types';
+  import RoleIcon, { ROLE_INFO } from './RoleIcon.svelte';
 
   interface Props {
     items: ImageItem[];
@@ -11,7 +12,10 @@
 
   let { items, selectedSrcs, onToggleRow, onToggleAll, onScrollTo }: Props = $props();
 
-  type SortKey = 'src' | 'alt' | 'size' | 'loading' | 'issues';
+  type SortKey = 'role' | 'src' | 'alt' | 'size' | 'loading' | 'issues';
+
+  // Ascending role sort puts the images that need work first.
+  const ROLE_RANK: Record<ImageRole, number> = { missing: 0, functional: 1, content: 2, decorative: 3 };
   let sortKey = $state<SortKey | null>(null);
   let sortDir = $state<'asc' | 'desc'>('asc');
 
@@ -38,6 +42,7 @@
   });
 
   function sortValue(item: ImageItem, key: SortKey): string | number | null {
+    if (key === 'role') return item.role ? ROLE_RANK[item.role] : null;
     if (key === 'size') return item.width && item.height ? item.width * item.height : null;
     if (key === 'issues') return item.issues.length;
     return item[key];
@@ -82,6 +87,7 @@
     <colgroup>
       <col class="w-select" />
       <col class="w-thumb" />
+      <col class="w-role" />
       <col class="w-image" />
       <col class="w-alt" />
       <col class="w-size" />
@@ -100,6 +106,7 @@
           />
         </th>
         <th class="col-thumb"></th>
+        {@render sortHeader('role', 'Role', 'col-role')}
         {@render sortHeader('src', 'Image', '')}
         {@render sortHeader('alt', 'Alt text', '')}
         {@render sortHeader('size', 'Size', 'col-size')}
@@ -130,6 +137,14 @@
               />
             </button>
           </td>
+          <td class="col-role">
+            {#if item.role}
+              <span class="role-cell" title="{ROLE_INFO[item.role].label}: {ROLE_INFO[item.role].description}">
+                <RoleIcon role={item.role} />
+                <span class="visually-hidden">{ROLE_INFO[item.role].label}</span>
+              </span>
+            {/if}
+          </td>
           <td class="col-image" title={item.src}>
             <button class="image-name" onclick={() => onScrollTo(item)}>
               <span class="src-badge src-{item.source}">{SOURCE_LABEL[item.source]}</span>
@@ -158,7 +173,7 @@
         </tr>
       {/each}
       {#if sortedItems.length === 0}
-        <tr><td colspan="7" class="empty">No images match the current filters</td></tr>
+        <tr><td colspan="8" class="empty">No images match the current filters</td></tr>
       {/if}
     </tbody>
   </table>
@@ -181,6 +196,7 @@
   }
   .w-select { width: 32px; }
   .w-thumb { width: 56px; }
+  .w-role { width: 48px; }
   .w-image { width: 30%; }
   .w-alt { width: 25%; }
   .w-size { width: 96px; }
@@ -214,6 +230,12 @@
   .col-size { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .col-loading { white-space: nowrap; }
   .muted { color: var(--text-muted); }
+  .col-role { text-align: center; }
+  .role-cell { display: inline-flex; padding: 4px; border-radius: 3px; cursor: help; }
+  .visually-hidden {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip-path: inset(50%); white-space: nowrap;
+  }
 
   .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .image-name {

@@ -1,4 +1,4 @@
-import type { ImageItem, ImageSource } from '../shared/types';
+import type { ImageItem, ImageRole, ImageSource } from '../shared/types';
 
 function abs(url: string): string {
   try {
@@ -69,6 +69,7 @@ function makeItem(partial: Partial<ImageItem> & { src: string; source: ImageSour
   return {
     src: partial.src,
     source: partial.source,
+    role: partial.role ?? null,
     alt: partial.alt ?? '',
     width: partial.width ?? null,
     height: partial.height ?? null,
@@ -121,6 +122,34 @@ function loadingIssues(el: HTMLImageElement, lcpImage: HTMLImageElement | null, 
   return issues;
 }
 
+function isHidden(el: Element): boolean {
+  const role = el.getAttribute('role');
+  return !!el.closest('[aria-hidden="true"]') || role === 'presentation' || role === 'none';
+}
+
+const INTERACTIVE = 'a[href], button, [role="button"], [role="link"]';
+
+function imgRole(el: HTMLImageElement): ImageRole {
+  const alt = el.getAttribute('alt');
+  if (isHidden(el) || (alt !== null && alt.trim() === '')) return 'decorative';
+  const named = alt?.trim() || el.getAttribute('aria-label')?.trim() || el.getAttribute('aria-labelledby');
+  if (!named) return 'missing';
+  return el.closest(INTERACTIVE) ? 'functional' : 'content';
+}
+
+function svgRole(el: SVGSVGElement): ImageRole {
+  if (isHidden(el)) return 'decorative';
+  const named =
+    el.getAttribute('aria-label')?.trim() ||
+    el.getAttribute('aria-labelledby') ||
+    el.querySelector(':scope > title')?.textContent?.trim();
+  const control = el.closest(INTERACTIVE);
+  if (named) return control ? 'functional' : 'content';
+  // An unlabeled icon next to visible control text adds nothing for screen readers.
+  const controlText = control ? (control.textContent ?? '').replace(el.textContent ?? '', '').trim() : '';
+  return controlText ? 'decorative' : 'missing';
+}
+
 function detectImg(): ImageItem[] {
   const out: ImageItem[] = [];
   const lcpImage = findLcpImage();
@@ -136,6 +165,7 @@ function detectImg(): ImageItem[] {
       makeItem({
         src: abs(raw),
         source: 'img',
+        role: imgRole(el),
         alt: el.getAttribute('alt') ?? '',
         width: el.naturalWidth || el.width || null,
         height: el.naturalHeight || el.height || null,
@@ -183,7 +213,8 @@ function detectCssBackgrounds(): ImageItem[] {
       const absolute = url.startsWith('data:') ? url : abs(url);
       if (seen.has(absolute)) return;
       seen.add(absolute);
-      out.push(makeItem({ src: absolute, source: 'css-bg' }));
+      // CSS images are never exposed to assistive technology.
+      out.push(makeItem({ src: absolute, source: 'css-bg', role: 'decorative' }));
     });
   });
   return out;
@@ -192,11 +223,10 @@ function detectCssBackgrounds(): ImageItem[] {
 function detectInlineSvg(): ImageItem[] {
   const out: ImageItem[] = [];
   const serializer = new XMLSerializer();
-  let svgCount = 0;
   document.querySelectorAll('svg').forEach((el) => {
     // Only top-level SVGs (skip nested SVGs whose parent is also SVG)
     if (el.parentElement?.closest('svg')) return;
-    svgCount++;
+    const role = svgRole(el);
     const markup = serializer.serializeToString(el);
     const dataUri = 'data:image/svg+xml;utf8,' + encodeURIComponent(markup);
     const widthAttr = el.getAttribute('width');
@@ -205,9 +235,11 @@ function detectInlineSvg(): ImageItem[] {
       makeItem({
         src: dataUri,
         source: 'svg',
+        role,
         width: widthAttr ? parseInt(widthAttr, 10) || null : null,
         height: heightAttr ? parseInt(heightAttr, 10) || null : null,
-        alt: el.getAttribute('aria-label') ?? `inline-svg-${svgCount}`,
+        alt: el.getAttribute('aria-label') ?? el.querySelector(':scope > title')?.textContent?.trim() ?? '',
+        issues: role === 'missing' ? ['No accessible name (add aria-label, or aria-hidden="true" if decorative)'] : [],
       })
     );
   });
