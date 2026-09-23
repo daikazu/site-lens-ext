@@ -1,8 +1,12 @@
 /* global chrome */
 
-let fontActive = false;
-let copierActive = false;
-let imageActive = false;
+// Pointer tools; the content script runs at most one at a time.
+const TOOLS = {
+  font: { id: 'font-toggle', color: '#4fc1ff' },
+  copier: { id: 'copier-toggle', color: '#f0b429' },
+  image: { id: 'image-toggle', color: '#4ec9b0' },
+};
+let activeTool = null;
 let grayActive = false;
 let activeCb = null;
 
@@ -17,9 +21,25 @@ function sendToTab(msg) {
   });
 }
 
+function showActiveTool(tool) {
+  activeTool = tool;
+  for (const [name, { id }] of Object.entries(TOOLS)) {
+    document.getElementById(id).classList.toggle('active', name === tool);
+  }
+  getTab().then(tab => {
+    if (!tab || !tab.id) return;
+    chrome.action.setBadgeText({ tabId: tab.id, text: tool ? 'ON' : '' });
+    if (tool) chrome.action.setBadgeBackgroundColor({ tabId: tab.id, color: TOOLS[tool].color });
+  });
+}
+
 // Sync UI state on open
 getTab().then(tab => {
   if (!tab || !tab.id) return;
+  chrome.tabs.sendMessage(tab.id, { type: 'GET_TOOL_STATE' }, (res) => {
+    if (chrome.runtime.lastError || !res) return;
+    showActiveTool(res.tool);
+  });
   // Get vision state
   chrome.tabs.sendMessage(tab.id, { type: 'GET_VISION_STATE' }, (res) => {
     if (chrome.runtime.lastError || !res) return;
@@ -40,71 +60,14 @@ getTab().then(tab => {
   });
 });
 
-// Font Inspector toggle
-document.getElementById('font-toggle').addEventListener('click', () => {
-  sendToTab({ type: 'TOGGLE_FONT_INSPECTOR' }).then(res => {
-    if (!res) return;
-    fontActive = res.active;
-    document.getElementById('font-toggle').classList.toggle('active', fontActive);
-    // Mutual exclusion: if font inspector is now active, the other tools are off
-    if (fontActive) {
-      copierActive = false;
-      imageActive = false;
-      document.getElementById('copier-toggle').classList.remove('active');
-      document.getElementById('image-toggle').classList.remove('active');
-    }
-    getTab().then(tab => {
-      if (tab && tab.id) {
-        chrome.action.setBadgeText({ tabId: tab.id, text: fontActive ? 'ON' : '' });
-        chrome.action.setBadgeBackgroundColor({ tabId: tab.id, color: '#4fc1ff' });
-      }
+// Tool toggles
+for (const [name, { id }] of Object.entries(TOOLS)) {
+  document.getElementById(id).addEventListener('click', () => {
+    sendToTab({ type: 'TOGGLE_TOOL', tool: name }).then(res => {
+      if (res) showActiveTool(res.tool);
     });
   });
-});
-
-// Element Copier toggle
-document.getElementById('copier-toggle').addEventListener('click', () => {
-  sendToTab({ type: 'TOGGLE_ELEMENT_COPIER' }).then(res => {
-    if (!res) return;
-    copierActive = res.active;
-    document.getElementById('copier-toggle').classList.toggle('active', copierActive);
-    // Mutual exclusion: if copier is now active, the other tools are off
-    if (copierActive) {
-      fontActive = false;
-      imageActive = false;
-      document.getElementById('font-toggle').classList.remove('active');
-      document.getElementById('image-toggle').classList.remove('active');
-    }
-    getTab().then(tab => {
-      if (tab && tab.id) {
-        chrome.action.setBadgeText({ tabId: tab.id, text: copierActive ? 'ON' : '' });
-        chrome.action.setBadgeBackgroundColor({ tabId: tab.id, color: '#f0b429' });
-      }
-    });
-  });
-});
-
-// Image Inspector toggle
-document.getElementById('image-toggle').addEventListener('click', () => {
-  sendToTab({ type: 'TOGGLE_IMAGE_INSPECTOR' }).then(res => {
-    if (!res) return;
-    imageActive = res.active;
-    document.getElementById('image-toggle').classList.toggle('active', imageActive);
-    // Mutual exclusion: if image inspector is now active, the other tools are off
-    if (imageActive) {
-      fontActive = false;
-      copierActive = false;
-      document.getElementById('font-toggle').classList.remove('active');
-      document.getElementById('copier-toggle').classList.remove('active');
-    }
-    getTab().then(tab => {
-      if (tab && tab.id) {
-        chrome.action.setBadgeText({ tabId: tab.id, text: imageActive ? 'ON' : '' });
-        chrome.action.setBadgeBackgroundColor({ tabId: tab.id, color: '#4ec9b0' });
-      }
-    });
-  });
-});
+}
 
 // Blur slider
 document.getElementById('blur-slider').addEventListener('input', (e) => {
@@ -142,32 +105,9 @@ document.querySelectorAll('.cb-btn').forEach(btn => {
 // Reset all
 document.getElementById('reset-btn').addEventListener('click', () => {
   sendToTab({ type: 'RESET_VISION' });
-  // Also disable font inspector if active
-  if (fontActive) {
-    sendToTab({ type: 'TOGGLE_FONT_INSPECTOR' }).then(() => {
-      fontActive = false;
-      document.getElementById('font-toggle').classList.remove('active');
-      getTab().then(tab => {
-        if (tab && tab.id) chrome.action.setBadgeText({ tabId: tab.id, text: '' });
-      });
-    });
-  }
-  if (copierActive) {
-    sendToTab({ type: 'TOGGLE_ELEMENT_COPIER' }).then(() => {
-      copierActive = false;
-      document.getElementById('copier-toggle').classList.remove('active');
-      getTab().then(tab => {
-        if (tab && tab.id) chrome.action.setBadgeText({ tabId: tab.id, text: '' });
-      });
-    });
-  }
-  if (imageActive) {
-    sendToTab({ type: 'TOGGLE_IMAGE_INSPECTOR' }).then(() => {
-      imageActive = false;
-      document.getElementById('image-toggle').classList.remove('active');
-      getTab().then(tab => {
-        if (tab && tab.id) chrome.action.setBadgeText({ tabId: tab.id, text: '' });
-      });
+  if (activeTool) {
+    sendToTab({ type: 'TOGGLE_TOOL', tool: activeTool }).then(res => {
+      if (res) showActiveTool(res.tool);
     });
   }
   // Reset UI

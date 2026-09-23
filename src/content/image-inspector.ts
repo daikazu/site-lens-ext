@@ -652,3 +652,7 @@ export function toggleImageInspector(): boolean {
   }
   return active;
 }
+
+export function isImageInspectorActive(): boolean {
+  return active;
+}

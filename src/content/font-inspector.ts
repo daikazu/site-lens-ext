@@ -234,3 +234,7 @@ export function toggleFontInspector(): boolean {
   }
   return active;
 }
+
+export function isFontInspectorActive(): boolean {
+  return active;
+}

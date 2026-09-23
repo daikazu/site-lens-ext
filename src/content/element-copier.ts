@@ -211,3 +211,7 @@ export function toggleElementCopier(): boolean {
   }
   return active;
 }
+
+export function isElementCopierActive(): boolean {
+  return active;
+}
