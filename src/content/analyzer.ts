@@ -3,7 +3,7 @@ import { highlightLinks, clearHighlights } from './highlighter';
 import { toggleFontInspector, disableFontInspector } from './font-inspector';
 import { toggleElementCopier, disableElementCopier } from './element-copier';
 import { setBlur, toggleGrayscale, setColorBlindness, getState as getVisionState, resetAll as resetVision } from './vision-simulator';
-import { detectImages } from './image-detector';
+import { ALT_ISSUES, PRIORITY_ISSUES, detectImages } from './image-detector';
 
 function analyzeOverview(): AnalysisResult['overview'] {
   const title = document.title || '';
@@ -241,8 +241,18 @@ function analyzeImages(): AnalysisResult['images'] {
   const warnings: string[] = [];
 
   const imgItems = items.filter((i) => i.source === 'img');
-  const missingAlt = imgItems.filter((i) => i.issues.includes('Missing alt text')).length;
+  const countIssue = (issue: string) => imgItems.filter((i) => i.issues.includes(issue)).length;
+  const missingAlt = countIssue(ALT_ISSUES.missing);
   if (missingAlt > 0) warnings.push(`${missingAlt} image(s) missing alt text`);
+  const hiddenNoAlt = countIssue(ALT_ISSUES.hiddenWithoutEmptyAlt);
+  if (hiddenNoAlt > 0) warnings.push(`${hiddenNoAlt} decorative image(s) hidden with ARIA but missing alt=""`);
+  if (countIssue(PRIORITY_ISSUES.lcpLazy) + countIssue(PRIORITY_ISSUES.lcpLazyHasHigh) > 0) {
+    warnings.push('Likely LCP image is lazy-loaded, which delays the main image (see Issues column)');
+  } else if (countIssue(PRIORITY_ISSUES.addHigh) > 0) {
+    warnings.push('Likely LCP image is missing fetchpriority="high" (see Issues column)');
+  }
+  const tooManyHigh = countIssue(PRIORITY_ISSUES.tooManyHigh);
+  if (tooManyHigh > 0) warnings.push(`${tooManyHigh} extra image(s) use fetchpriority="high"; reserve it for the LCP image`);
 
   const ogImage = document.querySelector('meta[property="og:image"]');
   const ogWidth = document.querySelector('meta[property="og:image:width"]');

@@ -8,6 +8,63 @@ function abs(url: string): string {
   }
 }
 
+// The browser reports the actual Largest Contentful Paint element; buffered: true includes
+// entries recorded before this content script ran.
+let lcpElement: Element | null = null;
+let lcpObserved = false;
+try {
+  new PerformanceObserver((list) => {
+    const entries = list.getEntries() as (PerformanceEntry & { element?: Element | null })[];
+    const last = entries[entries.length - 1];
+    if (last) {
+      lcpObserved = true;
+      lcpElement = last.element ?? null;
+    }
+  }).observe({ type: 'largest-contentful-paint', buffered: true });
+} catch {
+  // LCP entries unsupported; fall back to the size heuristic.
+}
+
+export const PRIORITY_ISSUES = {
+  addHigh: 'Likely LCP image: add fetchpriority="high"',
+  lcpLazy: 'Likely LCP image is lazy-loaded: remove loading="lazy" and add fetchpriority="high"',
+  lcpLazyHasHigh: 'Likely LCP image is lazy-loaded: remove loading="lazy"',
+  highBelowFold: 'fetchpriority="high" on an image below the fold',
+  tooManyHigh: 'Too many fetchpriority="high" images (keep it to the LCP image)',
+} as const;
+
+// A couple of high-priority images (e.g. a two-up hero) is reasonable; more dilutes the hint.
+const MAX_HIGH_PRIORITY = 2;
+
+function isAboveFold(rect: DOMRect): boolean {
+  return rect.top + window.scrollY < window.innerHeight;
+}
+
+// The <img> that should get fetchpriority="high": the reported LCP element when it's an image,
+// otherwise (no usable LCP data) the largest image visible on page load. Null when the LCP is text or a
+// CSS background, since fetchpriority can't be set on those.
+function findLcpImage(): HTMLImageElement | null {
+  // Soft navigations (SPA route changes) don't produce new LCP entries, so a detached element
+  // means the data is stale; fall back to the heuristic.
+  if (lcpObserved && lcpElement?.isConnected) {
+    if (lcpElement instanceof HTMLImageElement) return lcpElement;
+    const img = lcpElement?.tagName === 'PICTURE' ? lcpElement.querySelector('img') : null;
+    return img ?? null;
+  }
+  let best: HTMLImageElement | null = null;
+  let bestArea = 0;
+  document.querySelectorAll('img').forEach((el) => {
+    const rect = el.getBoundingClientRect();
+    const area = rect.width * rect.height;
+    if (area > bestArea && isAboveFold(rect)) {
+      best = el;
+      bestArea = area;
+    }
+  });
+  return best;
+}
+
+
 function makeItem(partial: Partial<ImageItem> & { src: string; source: ImageSource }): ImageItem {
   return {
     src: partial.src,
@@ -20,14 +77,61 @@ function makeItem(partial: Partial<ImageItem> & { src: string; source: ImageSour
   };
 }
 
+export const ALT_ISSUES = {
+  missing: 'Missing alt text',
+  hiddenWithoutEmptyAlt: 'Hidden from screen readers but missing alt=""',
+  emptyNotHidden: 'Empty alt (OK only if decorative)',
+} as const;
+
+// Decorative images are hidden with aria-hidden (on the image or an ancestor) or role="presentation"/"none".
+// Those should carry alt="" so browsers and crawlers that ignore ARIA still treat them as decorative.
+function altTextIssue(el: HTMLImageElement): string | null {
+  const alt = el.getAttribute('alt');
+  const role = el.getAttribute('role');
+  const decorative = !!el.closest('[aria-hidden="true"]') || role === 'presentation' || role === 'none';
+
+  if (alt === null) return decorative ? ALT_ISSUES.hiddenWithoutEmptyAlt : ALT_ISSUES.missing;
+  if (alt.trim() === '' && !decorative) return ALT_ISSUES.emptyNotHidden;
+  return null;
+}
+
+// Loading and priority advice, which depend on each other:
+// - The LCP image should load eagerly with fetchpriority="high".
+// - Other images visible on page load should load eagerly (the default), not lazily.
+// - Images further down should be lazy, and never high priority.
+// Hidden or zero-size images are skipped since their position says nothing about when they're needed.
+function loadingIssues(el: HTMLImageElement, lcpImage: HTMLImageElement | null, highCount: number): string[] {
+  const rect = el.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return [];
+
+  const isLazy = el.getAttribute('loading')?.toLowerCase() === 'lazy';
+  const isHigh = el.getAttribute('fetchpriority')?.toLowerCase() === 'high';
+  const aboveFold = isAboveFold(rect);
+
+  if (el === lcpImage) {
+    if (isLazy) return [isHigh ? PRIORITY_ISSUES.lcpLazyHasHigh : PRIORITY_ISSUES.lcpLazy];
+    return isHigh ? [] : [PRIORITY_ISSUES.addHigh];
+  }
+
+  const issues: string[] = [];
+  if (aboveFold && isLazy) issues.push('Lazy-loaded but visible on page load (delays rendering)');
+  if (!aboveFold && !isLazy) issues.push('Below the fold without loading="lazy"');
+  if (isHigh && !aboveFold) issues.push(PRIORITY_ISSUES.highBelowFold);
+  else if (isHigh && highCount > MAX_HIGH_PRIORITY) issues.push(PRIORITY_ISSUES.tooManyHigh);
+  return issues;
+}
+
 function detectImg(): ImageItem[] {
   const out: ImageItem[] = [];
+  const lcpImage = findLcpImage();
+  const highCount = document.querySelectorAll('img[fetchpriority="high" i]').length;
   document.querySelectorAll('img').forEach((el) => {
     const raw = el.getAttribute('src') || el.getAttribute('data-src') || '';
     if (!raw) return;
     const issues: string[] = [];
-    if ((el.getAttribute('alt') ?? '') === '') issues.push('Missing alt text');
-    if (!el.getAttribute('loading')) issues.push('No lazy loading attribute');
+    const altIssue = altTextIssue(el);
+    if (altIssue) issues.push(altIssue);
+    issues.push(...loadingIssues(el, lcpImage, highCount));
     out.push(
       makeItem({
         src: abs(raw),
