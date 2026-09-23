@@ -1,4 +1,4 @@
-import type { LinkCheckResult } from '../shared/types';
+import type { LinkCheckResult, PageHeadersResult } from '../shared/types';
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'FONT_INSPECTOR_DISABLED' && sender.tab?.id) {
@@ -88,6 +88,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const msg = err instanceof Error ? err.message : String(err);
         sendResponse({ ok: false, error: msg });
       });
+    return true;
+  }
+
+  if (message.type === 'FETCH_PAGE_HEADERS') {
+    fetchPageHeaders(message.url).then(sendResponse);
     return true;
   }
 
@@ -197,5 +202,20 @@ async function checkLink(url: string): Promise<LinkCheckResult> {
     };
   } catch (err) {
     return { status: 0, redirected: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// Response headers aren't visible to page scripts, so request the page again to read X-Robots-Tag.
+async function fetchPageHeaders(url: string): Promise<PageHeadersResult> {
+  try {
+    const res = await fetch(url, {
+      credentials: 'include',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(LINK_CHECK_TIMEOUT_MS),
+    });
+    res.body?.cancel().catch(() => {});
+    return { ok: true, status: res.status, xRobotsTag: res.headers.get('x-robots-tag') };
+  } catch (err) {
+    return { ok: false, status: null, xRobotsTag: null, error: err instanceof Error ? err.message : String(err) };
   }
 }

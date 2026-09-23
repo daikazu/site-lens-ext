@@ -17,6 +17,11 @@ function analyzeOverview(): AnalysisResult['overview'] {
 
   const robotsMeta = document.querySelector('meta[name="robots"]');
   const robots = robotsMeta?.getAttribute('content') || null;
+  const googlebot = document.querySelector('meta[name="googlebot"]')?.getAttribute('content') || null;
+
+  // The real status of this document load (Chrome 109+), without refetching the page.
+  const nav = performance.getEntriesByType('navigation')[0] as
+    (PerformanceNavigationTiming & { responseStatus?: number }) | undefined;
 
   const viewportMeta = document.querySelector('meta[name="viewport"]');
   const viewport = viewportMeta?.getAttribute('content') || null;
@@ -39,11 +44,13 @@ function analyzeOverview(): AnalysisResult['overview'] {
       matches: canonicalValue ? new URL(canonicalValue, window.location.href).href === window.location.href : false,
     },
     robots,
+    googlebot,
     viewport,
     charset,
     lang,
     favicon,
-    redirectChain: [],
+    httpStatus: nav?.responseStatus || null,
+    redirected: (nav?.redirectCount ?? 0) > 0,
   };
 }
 

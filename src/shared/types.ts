@@ -6,11 +6,20 @@ export interface OverviewData {
   url: string;
   canonical: { value: string | null; matches: boolean };
   robots: string | null;
+  googlebot: string | null;
   viewport: string | null;
   charset: string | null;
   lang: string | null;
   favicon: string | null;
-  redirectChain: string[];
+  httpStatus: number | null; // from Navigation Timing; null when the browser doesn't report it
+  redirected: boolean;
+}
+
+export interface PageHeadersResult {
+  ok: boolean;
+  status: number | null;
+  xRobotsTag: string | null;
+  error?: string;
 }
 
 // --- Headings ---
@@ -189,7 +198,8 @@ export type MessageType =
   | { type: 'FETCH_SITEMAP'; tabId: number; origin: string }
   | { type: 'FETCH_IMAGE'; url: string }
   | { type: 'HIGHLIGHT_LINKS'; tabId: number; mode: HighlightMode }
-  | { type: 'CLEAR_HIGHLIGHTS'; tabId: number };
+  | { type: 'CLEAR_HIGHLIGHTS'; tabId: number }
+  | { type: 'FETCH_PAGE_HEADERS'; url: string };
 
 export type FetchImageResponse =
   | { ok: true; bytesB64: string; contentType: string; status: number }

@@ -81,7 +81,7 @@
       <div class="loading">Analyzing page...</div>
     {:else if analysisData}
       {#if activeTab === 'Overview'}
-        <Overview data={analysisData.overview} tabId={chrome.devtools.inspectedWindow.tabId} />
+        <Overview analysis={analysisData} onNavigate={(tab) => (activeTab = tab)} />
       {:else if activeTab === 'Preview'}
         <Preview data={analysisData.preview} tabId={chrome.devtools.inspectedWindow.tabId} />
       {:else if activeTab === 'Headings'}
