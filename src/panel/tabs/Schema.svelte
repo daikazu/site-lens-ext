@@ -9,30 +9,74 @@
 
   let { data }: Props = $props();
 
-  function formatValue(value: unknown, depth: number = 0): string {
-    if (value === null || value === undefined) return '(empty)';
-    if (typeof value === 'string') return value;
-    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-    if (Array.isArray(value)) return value.map(v => typeof v === 'string' ? v : JSON.stringify(v)).join(', ');
-    if (typeof value === 'object') return JSON.stringify(value);
+  type SchemaObject = Record<string, unknown>;
+
+  function isObject(value: unknown): value is SchemaObject {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  function formatPrimitive(value: unknown): string {
+    if (value === null || value === undefined || value === '') return '(empty)';
     return String(value);
   }
 
-  function flattenSchema(obj: Record<string, unknown>, prefix: string = ''): { key: string; value: string; isNested: boolean }[] {
-    const rows: { key: string; value: string; isNested: boolean }[] = [];
-    for (const [key, value] of Object.entries(obj)) {
-      if (key === '@context') continue;
-      const label = prefix ? `${prefix}.${key}` : key;
-      if (value && typeof value === 'object' && !Array.isArray(value)) {
-        rows.push({ key: label, value: '', isNested: true });
-        rows.push(...flattenSchema(value as Record<string, unknown>, label));
-      } else {
-        rows.push({ key: label, value: formatValue(value), isNested: false });
-      }
-    }
-    return rows;
+  function typeLabel(obj: SchemaObject): string {
+    const type = obj['@type'];
+    if (Array.isArray(type)) return type.join(', ');
+    return typeof type === 'string' ? type : '';
+  }
+
+  // Skip @context everywhere, and @type when it is already shown in the parent's header.
+  function entries(obj: SchemaObject, skipType: boolean): [string, unknown][] {
+    return Object.entries(obj).filter(([k]) => k !== '@context' && !(skipType && k === '@type'));
+  }
+
+  function graphNodes(parsed: SchemaObject): SchemaObject[] | null {
+    const graph = parsed['@graph'];
+    return Array.isArray(graph) ? graph.filter(isObject) : null;
   }
 </script>
+
+{#snippet property(key: string, value: unknown)}
+  {#if isObject(value)}
+    <details class="node" open>
+      <summary class="node-summary">
+        <span class="prop-key">{key}</span>
+        {#if typeLabel(value)}<span class="node-type">{typeLabel(value)}</span>{/if}
+      </summary>
+      <div class="node-children">
+        {#each entries(value, true) as [k, v]}
+          {@render property(k, v)}
+        {/each}
+      </div>
+    </details>
+  {:else if Array.isArray(value) && value.some(isObject)}
+    <details class="node" open>
+      <summary class="node-summary">
+        <span class="prop-key">{key}</span>
+        <span class="node-count">{value.length} items</span>
+      </summary>
+      <div class="node-children">
+        {#each value as v, i}
+          {@render property(`[${i}]`, v)}
+        {/each}
+      </div>
+    </details>
+  {:else if Array.isArray(value)}
+    <div class="prop-row">
+      <span class="prop-key">{key}</span>
+      <span class="prop-value prop-list">
+        {#each value as v}<span>{formatPrimitive(v)}</span>{/each}
+        {#if value.length === 0}<span>(empty)</span>{/if}
+      </span>
+    </div>
+  {:else}
+    <div class="prop-row">
+      <span class="prop-key">{key}</span>
+      <span class="prop-value">{formatPrimitive(value)}</span>
+    </div>
+  {/if}
+{/snippet}
 
 <div class="schema-tab">
   {#if data.warnings.length > 0}
@@ -70,18 +114,25 @@
       {/if}
 
       <div class="property-list">
-        {#each flattenSchema(item.parsed) as row}
-          {#if row.isNested}
-            <div class="prop-row prop-nested">
-              <span class="prop-key">{row.key}</span>
-            </div>
-          {:else}
-            <div class="prop-row">
-              <span class="prop-key">{row.key}</span>
-              <span class="prop-value">{row.value}</span>
-            </div>
-          {/if}
-        {/each}
+        {#if graphNodes(item.parsed)}
+          {#each graphNodes(item.parsed) ?? [] as node}
+            <details class="entity" open>
+              <summary class="entity-summary">
+                <span class="entity-type">{typeLabel(node) || 'Thing'}</span>
+                {#if typeof node['@id'] === 'string'}<span class="entity-id">{node['@id']}</span>{/if}
+              </summary>
+              <div class="node-children">
+                {#each entries(node, true) as [key, value]}
+                  {@render property(key, value)}
+                {/each}
+              </div>
+            </details>
+          {/each}
+        {:else}
+          {#each entries(item.parsed, item.format === 'json-ld') as [key, value]}
+            {@render property(key, value)}
+          {/each}
+        {/if}
       </div>
 
       <details class="json-details">
@@ -118,9 +169,30 @@
   .prop-value {
     color: var(--text-primary); word-break: break-word;
   }
-  .prop-nested .prop-key {
-    color: var(--text-secondary); font-weight: 600;
-    font-size: 11px; padding-top: 6px;
+  .prop-list { display: flex; flex-direction: column; }
+  .node-summary, .entity-summary {
+    display: flex; align-items: center; gap: 8px; padding: 3px 8px;
+    font-size: 12px; cursor: pointer; border-radius: 2px; user-select: none;
+  }
+  .node-summary:hover, .entity-summary:hover { background: var(--bg-hover); }
+  .node-summary .prop-key { min-width: 0; }
+  .node-type {
+    color: var(--text-secondary); font-size: 11px; font-weight: 600;
+  }
+  .node-count { color: var(--text-muted); font-size: 11px; }
+  .node-children {
+    margin-left: 12px; padding-left: 8px;
+    border-left: 1px solid var(--border-color);
+    display: flex; flex-direction: column; gap: 1px;
+  }
+  .entity {
+    border: 1px solid var(--border-color); border-radius: 4px;
+    padding: 4px 0; margin-bottom: 6px;
+  }
+  .entity-type { color: var(--text-primary); font-weight: 600; }
+  .entity-id {
+    color: var(--text-muted); font-family: var(--font-mono); font-size: 11px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .json-details { margin-top: 4px; }
   .json-summary {
