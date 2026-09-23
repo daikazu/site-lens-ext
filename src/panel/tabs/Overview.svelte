@@ -1,5 +1,7 @@
 <script lang="ts">
-  import type { AnalysisResult, PageHeadersResult } from '../../shared/types';
+  import type { AnalysisResult, PageSourceResult } from '../../shared/types';
+  import { robotsVerdict, type RobotsVerdict } from '../lib/robots';
+  import { getPageSource, getRobots } from '../lib/site-data';
   import {
     attentionItems,
     canonicalRelation,
@@ -18,18 +20,20 @@
 
   const data = $derived(analysis.overview);
 
-  let headers = $state<PageHeadersResult | null>(null);
-  let headersLoading = $state(false);
+  let source = $state<PageSourceResult | null>(null);
+  let robots = $state<RobotsVerdict | null>(null);
+  let sourceLoading = $state(false);
 
   $effect(() => {
     const url = data.url;
-    headers = null;
-    headersLoading = true;
-    chrome.runtime
-      .sendMessage({ type: 'FETCH_PAGE_HEADERS', url })
-      .then((res: PageHeadersResult) => { headers = res; })
-      .catch(() => { headers = { ok: false, status: null, xRobotsTag: null }; })
-      .finally(() => { headersLoading = false; });
+    const scan = analysis.timestamp;
+    source = null;
+    robots = null;
+    sourceLoading = true;
+    getPageSource(url, scan).then((res) => { source = res; }).finally(() => { sourceLoading = false; });
+    try {
+      getRobots(new URL(url).origin, scan).then((res) => { robots = robotsVerdict(res, url); });
+    } catch { /* non-http URL */ }
   });
 
   let faviconUrl = $state<string | null>(null);
@@ -52,12 +56,13 @@
     );
   });
 
-  const verdict = $derived(indexability(data, headers));
+  const verdict = $derived(indexability(data, source, robots));
   const canonical = $derived(canonicalRelation(data.url, data.canonical.value));
   const title = $derived(snippetCheck(data.title.value, 'title'));
   const description = $derived(snippetCheck(data.description.value, 'description'));
   const attention = $derived(attentionItems(analysis));
-  const status = $derived(data.httpStatus ?? headers?.status ?? null);
+  const status = $derived(data.httpStatus ?? source?.status ?? null);
+  const xRobotsTag = $derived(source?.headers['x-robots-tag'] ?? null);
 
   const VERDICT_LABEL = {
     indexable: 'Indexable',
@@ -116,7 +121,7 @@
       <h2 id="verdict-heading" class="verdict-title">{VERDICT_LABEL[verdict.state]}</h2>
       {#if status !== null}
         <span class="http-status tone-{statusTone(status)}">HTTP {status}{data.redirected ? ' · after redirect' : ''}</span>
-      {:else if headersLoading}
+      {:else if sourceLoading}
         <span class="http-status tone-muted">Checking…</span>
       {/if}
     </div>
@@ -134,19 +139,19 @@
   <div class="columns">
     <div class="col col-side">
       <section class="panel" aria-labelledby="attention-heading">
-        <h3 id="attention-heading" class="panel-title">
+        <h3 id="attention-heading" class="kv-title">
           Needs attention
-          {#if attention.length}<span class="count">{attention.length}</span>{/if}
+          {#if attention.length}<span class="kv-count">{attention.length}</span>{/if}
         </h3>
         {#if attention.length === 0}
           <p class="empty-row tone-ok">No warnings from any tab.</p>
         {:else}
-          <ul class="rows">
+          <ul class="kv-rows">
             {#each attention as item}
               <li>
-                <button class="row row-button" onclick={() => onNavigate(item.tab)} disabled={item.tab === 'Overview'}>
-                  <span class="row-label">{item.tab === 'Overview' ? 'Page' : item.tab}</span>
-                  <span class="row-value">{item.text}</span>
+                <button class="kv-row kv-row-button" onclick={() => onNavigate(item.tab)} disabled={item.tab === 'Overview'}>
+                  <span class="kv-label">{item.tab === 'Overview' ? 'Page' : item.tab}</span>
+                  <span class="kv-value">{item.text}</span>
                   {#if item.tab !== 'Overview'}{@render chevron()}{/if}
                 </button>
               </li>
@@ -156,44 +161,57 @@
       </section>
 
       <section class="panel" aria-labelledby="indexing-heading">
-        <h3 id="indexing-heading" class="panel-title">Indexing</h3>
-        <dl class="rows">
-          <div class="row">
-            <dt class="row-label">URL</dt>
-            <dd class="row-value mono">{data.url}</dd>
+        <h3 id="indexing-heading" class="kv-title">Indexing</h3>
+        <dl class="kv-rows">
+          <div class="kv-row">
+            <dt class="kv-label">URL</dt>
+            <dd class="kv-value mono">{data.url}</dd>
           </div>
-          <div class="row">
-            <dt class="row-label">Canonical</dt>
-            <dd class="row-value">
+          <div class="kv-row">
+            <dt class="kv-label">Canonical</dt>
+            <dd class="kv-value">
               {#if canonical.kind === 'missing'}
                 <span class="tone-warning">Not set</span>
               {:else}
                 <span class="mono">{data.canonical.value}</span>
                 {#if canonical.kind === 'self'}
-                  <span class="sub tone-ok">{canonical.note}</span>
+                  <span class="kv-sub tone-ok">{canonical.note}</span>
                 {:else if canonical.kind === 'other'}
-                  <span class="sub tone-warning">Different page</span>
+                  <span class="kv-sub tone-warning">Different page</span>
                 {:else}
-                  <span class="sub tone-warning">Malformed URL</span>
+                  <span class="kv-sub tone-warning">Malformed URL</span>
                 {/if}
               {/if}
             </dd>
           </div>
-          <div class="row">
-            <dt class="row-label">Meta robots</dt>
-            <dd class="row-value">
+          <div class="kv-row">
+            <dt class="kv-label">Meta robots</dt>
+            <dd class="kv-value">
               {#if data.robots}<span class="mono">{data.robots}</span>{:else}<span class="muted">Not set (index, follow)</span>{/if}
-              {#if data.googlebot}<span class="sub mono">googlebot: {data.googlebot}</span>{/if}
+              {#if data.googlebot}<span class="kv-sub mono">googlebot: {data.googlebot}</span>{/if}
             </dd>
           </div>
-          <div class="row">
-            <dt class="row-label">X-Robots-Tag</dt>
-            <dd class="row-value">
-              {#if headersLoading}
+          <div class="kv-row">
+            <dt class="kv-label">robots.txt</dt>
+            <dd class="kv-value">
+              {#if !robots}
                 <span class="muted">Checking…</span>
-              {:else if headers?.xRobotsTag}
-                <span class="mono">{headers.xRobotsTag}</span>
-              {:else if headers && !headers.ok}
+              {:else}
+                <span class:tone-error={robots.state === 'blocked'} class:tone-ok={robots.state === 'allowed'} class:muted={robots.state === 'unknown'}>
+                  {robots.state === 'blocked' ? 'Blocked' : robots.state === 'allowed' ? 'Allowed' : 'Unknown'}
+                </span>
+                <span class="kv-sub muted">{robots.detail}</span>
+              {/if}
+            </dd>
+          </div>
+          <div class="kv-row">
+            <dt class="kv-label">X-Robots-Tag</dt>
+            <dd class="kv-value">
+              {#if sourceLoading}
+                <span class="muted">Checking…</span>
+              {:else if xRobotsTag}
+                <span class="mono">{xRobotsTag}</span>
+              {:else if source && !source.ok}
                 <span class="muted">Could not fetch headers</span>
               {:else}
                 <span class="muted">Not set</span>
@@ -206,18 +224,18 @@
 
     <div class="col col-main">
       <section class="panel" aria-labelledby="appearance-heading">
-        <h3 id="appearance-heading" class="panel-title">Search appearance</h3>
-        <dl class="rows">
-          <div class="row">
-            <dt class="row-label">Title</dt>
-            <dd class="row-value">
+        <h3 id="appearance-heading" class="kv-title">Search appearance</h3>
+        <dl class="kv-rows">
+          <div class="kv-row">
+            <dt class="kv-label">Title</dt>
+            <dd class="kv-value">
               <p class="snippet-title" class:muted={!data.title.value}>{data.title.value || 'No title'}</p>
               {@render meter(title, 'title')}
             </dd>
           </div>
-          <div class="row">
-            <dt class="row-label">Description</dt>
-            <dd class="row-value">
+          <div class="kv-row">
+            <dt class="kv-label">Description</dt>
+            <dd class="kv-value">
               <p class="snippet-description" class:muted={!data.description.value}>
                 {data.description.value || 'No meta description. Google will pull text from the page instead.'}
               </p>
@@ -228,11 +246,11 @@
       </section>
 
       <section class="panel" aria-labelledby="facts-heading">
-        <h3 id="facts-heading" class="panel-title">Page facts</h3>
-        <dl class="rows">
-          <div class="row">
-            <dt class="row-label">H1</dt>
-            <dd class="row-value">
+        <h3 id="facts-heading" class="kv-title">Page facts</h3>
+        <dl class="kv-rows">
+          <div class="kv-row">
+            <dt class="kv-label">H1</dt>
+            <dd class="kv-value">
               {#if h1s.length === 0}
                 <span class="tone-warning">None</span>
               {:else}
@@ -241,19 +259,19 @@
               {/if}
             </dd>
           </div>
-          <div class="row">
-            <dt class="row-label">Words</dt>
-            <dd class="row-value num">{analysis.content.wordCount.toLocaleString()}</dd>
+          <div class="kv-row">
+            <dt class="kv-label">Words</dt>
+            <dd class="kv-value num">{analysis.content.wordCount.toLocaleString()}</dd>
           </div>
-          <div class="row">
-            <dt class="row-label">Structured data</dt>
-            <dd class="row-value">
+          <div class="kv-row">
+            <dt class="kv-label">Structured data</dt>
+            <dd class="kv-value">
               {#if schemaTypes.length}{schemaTypes.join(', ')}{:else}<span class="muted">None</span>{/if}
             </dd>
           </div>
-          <div class="row">
-            <dt class="row-label">Share image</dt>
-            <dd class="row-value">
+          <div class="kv-row">
+            <dt class="kv-label">Share image</dt>
+            <dd class="kv-value">
               {#if analysis.preview.og.image}
                 <span class="with-icon">
                   <img
@@ -269,9 +287,9 @@
               {/if}
             </dd>
           </div>
-          <div class="row">
-            <dt class="row-label">hreflang</dt>
-            <dd class="row-value">
+          <div class="kv-row">
+            <dt class="kv-label">hreflang</dt>
+            <dd class="kv-value">
               {#if analysis.technical.hreflang.length}
                 {analysis.technical.hreflang.length} alternate{analysis.technical.hreflang.length === 1 ? '' : 's'}
               {:else}
@@ -279,21 +297,21 @@
               {/if}
             </dd>
           </div>
-          <div class="row">
-            <dt class="row-label">Language</dt>
-            <dd class="row-value">{#if data.lang}{data.lang}{:else}<span class="tone-warning">Missing</span>{/if}</dd>
+          <div class="kv-row">
+            <dt class="kv-label">Language</dt>
+            <dd class="kv-value">{#if data.lang}{data.lang}{:else}<span class="tone-warning">Missing</span>{/if}</dd>
           </div>
-          <div class="row">
-            <dt class="row-label">Viewport</dt>
-            <dd class="row-value">{#if data.viewport}<span class="mono">{data.viewport}</span>{:else}<span class="tone-error">Missing</span>{/if}</dd>
+          <div class="kv-row">
+            <dt class="kv-label">Viewport</dt>
+            <dd class="kv-value">{#if data.viewport}<span class="mono">{data.viewport}</span>{:else}<span class="tone-error">Missing</span>{/if}</dd>
           </div>
-          <div class="row">
-            <dt class="row-label">Charset</dt>
-            <dd class="row-value">{#if data.charset}{data.charset.toUpperCase()}{:else}<span class="muted">Not declared</span>{/if}</dd>
+          <div class="kv-row">
+            <dt class="kv-label">Charset</dt>
+            <dd class="kv-value">{#if data.charset}{data.charset.toUpperCase()}{:else}<span class="muted">Not declared</span>{/if}</dd>
           </div>
-          <div class="row">
-            <dt class="row-label">Favicon</dt>
-            <dd class="row-value">
+          <div class="kv-row">
+            <dt class="kv-label">Favicon</dt>
+            <dd class="kv-value">
               {#if data.favicon}
                 <span class="with-icon">
                   {#if faviconUrl}<img src={faviconUrl} alt="" class="favicon-img" />{/if}
@@ -311,7 +329,7 @@
 </div>
 
 <style>
-  /* One grammar for the whole tab: panel title, then hairline rows with a shared label column. */
+  /* Section titles and rows use the shared kv- grammar in devtools-theme.css. */
   .overview {
     --label-col: 112px;
     --row-gap-x: 16px;
@@ -323,12 +341,6 @@
     padding-bottom: 8px;
   }
 
-  .tone-ok { color: var(--success-color); }
-  .tone-warning { color: var(--warning-color); }
-  .tone-error { color: var(--error-color); }
-  .tone-muted, .muted { color: var(--text-muted); }
-  .mono { font-family: var(--font-mono); font-size: 11.5px; }
-  .num { font-variant-numeric: tabular-nums; }
 
   /* --- Verdict banner: the only tinted surface --- */
   .verdict {
@@ -374,47 +386,11 @@
     .col-side { order: 2; }
   }
 
-  .panel-title {
-    display: flex; align-items: center; gap: 8px; height: 20px;
-    color: var(--text-secondary); font-size: 11px; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.5px;
-    margin-bottom: 6px;
-  }
-  .count {
-    font-size: 10px; letter-spacing: 0; color: var(--text-primary); font-weight: 600;
-    background: var(--bg-active); border-radius: 8px; padding: 0 6px; line-height: 16px;
-    font-variant-numeric: tabular-nums;
-  }
 
-  /* --- Rows --- */
-  .rows { list-style: none; border-top: 1px solid var(--border-color); }
-  .rows > li, .rows > .row { border-bottom: 1px solid var(--border-color); }
-  .row {
-    display: grid;
-    grid-template-columns: var(--label-col) minmax(0, 1fr);
-    column-gap: var(--row-gap-x);
-    align-items: baseline;
-    padding: 7px 0;
-    font-size: 12px;
-    line-height: 18px;
-  }
-  .row-label { color: var(--text-muted); font-size: 11px; }
-  .row-value { color: var(--text-primary); min-width: 0; overflow-wrap: anywhere; }
-  .sub { display: block; font-size: 11px; }
   .aside { margin-left: 8px; font-size: 11px; white-space: nowrap; }
   .empty-row { padding: 7px 0; font-size: 12px; border-top: 1px solid var(--border-color); }
 
-  .row-button {
-    grid-template-columns: var(--label-col) minmax(0, 1fr) 14px;
-    width: 100%; text-align: left; font: inherit; font-size: 12px; line-height: 18px;
-    background: none; border: none; color: inherit; cursor: pointer;
-    padding: 7px 0; border-radius: 0;
-    transition: background-color 150ms ease-out;
-  }
-  .row-button:hover:not(:disabled) { background: var(--bg-hover); }
-  .row-button:hover:not(:disabled) .chevron { color: var(--accent-color); transform: translateX(2px); }
-  .row-button:focus-visible { outline: 1px solid var(--accent-color); outline-offset: -1px; }
-  .row-button:disabled { cursor: default; }
+  .kv-row-button:hover:not(:disabled) .chevron { color: var(--accent-color); transform: translateX(2px); }
   .chevron {
     width: 14px; height: 14px; color: var(--text-muted); align-self: center;
     transition: transform 150ms ease-out, color 150ms ease-out;

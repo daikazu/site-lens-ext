@@ -1,4 +1,5 @@
-import type { AnalysisResult, PageHeadersResult } from '../../shared/types';
+import type { AnalysisResult, PageSourceResult } from '../../shared/types';
+import type { RobotsVerdict } from './robots';
 
 export type TabName = 'Overview' | 'Preview' | 'Headings' | 'Content' | 'Links' | 'Images' | 'Schema' | 'Technical';
 export type Severity = 'error' | 'warning' | 'ok';
@@ -77,13 +78,18 @@ export interface Indexability {
 
 export function indexability(
   overview: AnalysisResult['overview'],
-  headers: PageHeadersResult | null,
+  source: PageSourceResult | null,
+  robotsTxt: RobotsVerdict | null,
 ): Indexability {
   const reasons: Reason[] = [];
   const robots = metaDirectives(overview.robots);
   const googlebot = metaDirectives(overview.googlebot);
-  const header = headerDirectives(headers?.xRobotsTag ?? null);
-  const status = overview.httpStatus ?? headers?.status ?? null;
+  const header = headerDirectives(source?.headers['x-robots-tag'] ?? null);
+  const status = overview.httpStatus ?? source?.status ?? null;
+
+  // A robots.txt block stops crawling, so Google can't see anything else on the page.
+  if (robotsTxt?.state === 'blocked') reasons.push({ severity: 'error', text: `robots.txt blocks Googlebot: ${robotsTxt.detail.replace(/^Blocked by /, '')}` });
+  else if (robotsTxt?.state === 'unknown' && robotsTxt.serverError) reasons.push({ severity: 'warning', text: robotsTxt.detail });
 
   if (blocksIndexing(robots)) reasons.push({ severity: 'error', text: 'noindex in the meta robots tag' });
   if (blocksIndexing(googlebot)) reasons.push({ severity: 'error', text: 'noindex in the meta googlebot tag' });

@@ -95,7 +95,7 @@
       {:else if activeTab === 'Schema'}
         <Schema data={analysisData.schema} />
       {:else if activeTab === 'Technical'}
-        <Technical data={analysisData.technical} tabId={chrome.devtools.inspectedWindow.tabId} />
+        <Technical analysis={analysisData} />
       {:else}
         <p class="placeholder">Tab: {activeTab} - content coming soon</p>
       {/if}

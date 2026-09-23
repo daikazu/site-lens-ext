@@ -1,4 +1,5 @@
 import type { ImageItem, ImageRole, ImageSource } from '../shared/types';
+import { lcp } from './perf';
 
 function abs(url: string): string {
   try {
@@ -6,23 +7,6 @@ function abs(url: string): string {
   } catch {
     return url;
   }
-}
-
-// The browser reports the actual Largest Contentful Paint element; buffered: true includes
-// entries recorded before this content script ran.
-let lcpElement: Element | null = null;
-let lcpObserved = false;
-try {
-  new PerformanceObserver((list) => {
-    const entries = list.getEntries() as (PerformanceEntry & { element?: Element | null })[];
-    const last = entries[entries.length - 1];
-    if (last) {
-      lcpObserved = true;
-      lcpElement = last.element ?? null;
-    }
-  }).observe({ type: 'largest-contentful-paint', buffered: true });
-} catch {
-  // LCP entries unsupported; fall back to the size heuristic.
 }
 
 export const PRIORITY_ISSUES = {
@@ -46,9 +30,9 @@ function isAboveFold(rect: DOMRect): boolean {
 function findLcpImage(): HTMLImageElement | null {
   // Soft navigations (SPA route changes) don't produce new LCP entries, so a detached element
   // means the data is stale; fall back to the heuristic.
-  if (lcpObserved && lcpElement?.isConnected) {
-    if (lcpElement instanceof HTMLImageElement) return lcpElement;
-    const img = lcpElement?.tagName === 'PICTURE' ? lcpElement.querySelector('img') : null;
+  if (lcp.observed && lcp.element?.isConnected) {
+    if (lcp.element instanceof HTMLImageElement) return lcp.element;
+    const img = lcp.element.tagName === 'PICTURE' ? lcp.element.querySelector('img') : null;
     return img ?? null;
   }
   let best: HTMLImageElement | null = null;

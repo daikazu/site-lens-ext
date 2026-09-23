@@ -15,11 +15,40 @@ export interface OverviewData {
   redirected: boolean;
 }
 
-export interface PageHeadersResult {
+// The page as the server sends it, before JavaScript runs.
+export interface PageSourceResult {
   ok: boolean;
   status: number | null;
-  xRobotsTag: string | null;
+  finalUrl: string | null;
+  redirected: boolean;
+  headers: Record<string, string>;  // lowercased names
+  html: string | null;              // null for non-HTML responses
+  truncated: boolean;
   error?: string;
+}
+
+export interface RobotsTxtResult {
+  url: string;
+  status: number | null;
+  contentType: string | null;
+  content: string | null;  // null unless the response is a real text file
+  error?: string;
+}
+
+export interface SitemapCheck {
+  url: string;
+  status: number | null;
+  kind: 'urlset' | 'index' | 'invalid' | 'unreachable';
+  urlCount: number;
+  containsPage: boolean;
+  children?: SitemapCheck[];  // for sitemap indexes, the child sitemaps that were checked
+  error?: string;
+}
+
+export interface SitemapsResult {
+  sitemaps: SitemapCheck[];
+  containsPage: boolean | null;  // null when not every sitemap could be checked
+  checkedLimitReached: boolean;
 }
 
 // --- Headings ---
@@ -138,24 +167,39 @@ export interface SchemaData {
 }
 
 // --- Technical ---
+export type ResourceCategoryName = 'HTML' | 'JavaScript' | 'CSS' | 'Images' | 'Fonts' | 'Media' | 'XHR / fetch' | 'Other';
+
+export interface ResourceCategory {
+  name: ResourceCategoryName;
+  bytes: number;       // compressed body size of the requests that could be measured
+  requests: number;
+  unmeasured: number;  // cross-origin requests without Timing-Allow-Origin report no size
+}
+
+export interface PerformanceMetrics {
+  ttfb: number | null;              // ms
+  fcp: number | null;               // ms
+  lcp: number | null;               // ms
+  cls: number | null;               // unitless
+  domContentLoaded: number | null;  // ms
+  load: number | null;              // ms
+}
+
 export interface TechnicalData {
-  robotsTxt: { exists: boolean; content: string | null };
-  sitemap: { exists: boolean; url: string | null; urls: string[] };
   hreflang: { lang: string; url: string }[];
   pageWeight: {
-    total: number;
-    js: number;
-    css: number;
-    images: number;
-    fonts: number;
-    other: number;
+    categories: ResourceCategory[];
+    totalBytes: number;
+    totalRequests: number;
+    unmeasured: number;
   };
+  domains: { host: string; requests: number; bytes: number; sameSite: boolean }[];
+  protocols: { protocol: string; requests: number }[];
+  documentProtocol: string | null;
   renderBlocking: string[];
-  jsRendering: {
-    initialElementCount: number;
-    renderedElementCount: number;
-    diff: number;
-  };
+  mixedContent: string[];
+  domElements: number;
+  performance: PerformanceMetrics;
 }
 
 // --- Preview ---
@@ -199,12 +243,12 @@ export interface AnalysisResult {
 export type MessageType =
   | { type: 'ANALYZE_PAGE'; tabId: number }
   | { type: 'DEEP_SCAN_LINKS'; tabId: number; urls: string[] }
-  | { type: 'FETCH_ROBOTS'; tabId: number; origin: string }
-  | { type: 'FETCH_SITEMAP'; tabId: number; origin: string }
+  | { type: 'FETCH_ROBOTS'; origin: string }
+  | { type: 'CHECK_SITEMAPS'; urls: string[]; pageUrls: string[] }
   | { type: 'FETCH_IMAGE'; url: string }
   | { type: 'HIGHLIGHT_LINKS'; tabId: number; mode: HighlightMode }
   | { type: 'CLEAR_HIGHLIGHTS'; tabId: number }
-  | { type: 'FETCH_PAGE_HEADERS'; url: string };
+  | { type: 'FETCH_PAGE_SOURCE'; url: string };
 
 export type FetchImageResponse =
   | { ok: true; bytesB64: string; contentType: string; status: number }

@@ -1,9 +1,10 @@
-import type { AnalysisResult } from '../shared/types';
+import type { AnalysisResult, ResourceCategory, ResourceCategoryName } from '../shared/types';
 import { highlightLinks, clearHighlights } from './highlighter';
 import { toggleFontInspector, disableFontInspector } from './font-inspector';
 import { toggleElementCopier, disableElementCopier } from './element-copier';
 import { setBlur, toggleGrayscale, setColorBlindness, getState as getVisionState, resetAll as resetVision } from './vision-simulator';
 import { ALT_ISSUES, PRIORITY_ISSUES, detectImages } from './image-detector';
+import { performanceMetrics } from './perf';
 
 function analyzeOverview(): AnalysisResult['overview'] {
   const title = document.title || '';
@@ -349,49 +350,124 @@ function analyzeSchema(): AnalysisResult['schema'] {
   return { items, warnings };
 }
 
-function analyzeTechnical(): AnalysisResult['technical'] {
-  const hreflangLinks = document.querySelectorAll('link[rel="alternate"][hreflang]');
-  const hreflang: { lang: string; url: string }[] = [];
-  hreflangLinks.forEach((el) => {
-    hreflang.push({
-      lang: el.getAttribute('hreflang') || '',
-      url: el.getAttribute('href') || '',
+type ResourceEntry = PerformanceResourceTiming & { renderBlockingStatus?: string; contentType?: string };
+
+const CATEGORY_ORDER: ResourceCategoryName[] = ['HTML', 'JavaScript', 'CSS', 'Images', 'Fonts', 'Media', 'XHR / fetch', 'Other'];
+
+// Classify by MIME type when the browser reports it, then by file extension, then by initiator.
+// Initiator alone misleads: fonts and background images loaded from a stylesheet have initiator "css".
+function resourceCategory(r: ResourceEntry): ResourceCategoryName {
+  const mime = r.contentType ?? '';
+  if (mime) {
+    if (mime.includes('javascript') || mime.includes('ecmascript')) return 'JavaScript';
+    if (mime === 'text/css') return 'CSS';
+    if (mime.startsWith('image/')) return 'Images';
+    if (mime.startsWith('font/') || mime.includes('font-woff')) return 'Fonts';
+    if (mime.startsWith('video/') || mime.startsWith('audio/')) return 'Media';
+    if (mime === 'text/html') return 'HTML';
+  }
+  let path = '';
+  try { path = new URL(r.name).pathname.toLowerCase(); } catch { /* keep empty */ }
+  if (/\.(woff2?|ttf|otf|eot)$/.test(path)) return 'Fonts';
+  if (/\.(png|jpe?g|gif|webp|avif|svg|ico|bmp)$/.test(path)) return 'Images';
+  if (/\.(mp4|webm|ogv|mov|mp3|m4a|ogg|wav)$/.test(path)) return 'Media';
+  if (/\.css$/.test(path)) return 'CSS';
+  if (/\.m?js$/.test(path)) return 'JavaScript';
+  switch (r.initiatorType) {
+    case 'script': return 'JavaScript';
+    case 'img': case 'image': return 'Images';
+    case 'video': case 'audio': return 'Media';
+    case 'fetch': case 'xmlhttprequest': case 'beacon': return 'XHR / fetch';
+    default: return 'Other';
+  }
+}
+
+// Approximate registrable domain ("img.example.co.uk" -> "example.co.uk") to group first-party CDNs.
+function siteOf(host: string): string {
+  const labels = host.split('.');
+  const take = labels.length >= 3 && labels[labels.length - 1].length === 2 && labels[labels.length - 2].length <= 3 ? 3 : 2;
+  return labels.slice(-take).join('.');
+}
+
+function findMixedContent(resources: ResourceEntry[]): string[] {
+  if (location.protocol !== 'https:') return [];
+  const found = new Set<string>();
+  resources.forEach((r) => { if (r.name.startsWith('http:')) found.add(r.name); });
+  // Browsers block active mixed content outright, so it never shows up as a loaded resource.
+  document
+    .querySelectorAll('img[src^="http:"], script[src^="http:"], iframe[src^="http:"], source[src^="http:"], video[src^="http:"], audio[src^="http:"], link[rel~="stylesheet"][href^="http:"], object[data^="http:"]')
+    .forEach((el) => {
+      const url = el.getAttribute('src') ?? el.getAttribute('href') ?? el.getAttribute('data');
+      if (url) found.add(url);
+    });
+  document.querySelectorAll('[srcset*="http:"]').forEach((el) => {
+    (el.getAttribute('srcset') ?? '').split(',').forEach((part) => {
+      const url = part.trim().split(/\s+/)[0];
+      if (url.startsWith('http:')) found.add(url);
     });
   });
+  return [...found];
+}
 
-  const resources = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
-  let jsSize = 0, cssSize = 0, imageSize = 0, fontSize = 0, otherSize = 0;
-  const renderBlocking: string[] = [];
-
-  resources.forEach((r) => {
-    const size = r.transferSize || 0;
-    const type = r.initiatorType;
-
-    if (type === 'script' || r.name.match(/\.js(\?|$)/)) {
-      jsSize += size;
-      if ((r as any).renderBlockingStatus === 'blocking') renderBlocking.push(r.name);
-    } else if (type === 'css' || type === 'link' || r.name.match(/\.css(\?|$)/)) {
-      cssSize += size;
-      if ((r as any).renderBlockingStatus === 'blocking') renderBlocking.push(r.name);
-    } else if (type === 'img' || r.name.match(/\.(png|jpg|jpeg|gif|webp|svg|avif)(\?|$)/i)) {
-      imageSize += size;
-    } else if (r.name.match(/\.(woff2?|ttf|otf|eot)(\?|$)/i)) {
-      fontSize += size;
-    } else {
-      otherSize += size;
-    }
+function analyzeTechnical(): AnalysisResult['technical'] {
+  const hreflang: { lang: string; url: string }[] = [];
+  document.querySelectorAll('link[rel="alternate"][hreflang]').forEach((el) => {
+    hreflang.push({ lang: el.getAttribute('hreflang') || '', url: el.getAttribute('href') || '' });
   });
 
-  const total = jsSize + cssSize + imageSize + fontSize + otherSize;
-  const renderedElementCount = document.querySelectorAll('*').length;
+  const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+  const resources = performance.getEntriesByType('resource') as ResourceEntry[];
+  const pageSite = siteOf(location.hostname);
 
+  const categories = new Map<ResourceCategoryName, ResourceCategory>(
+    CATEGORY_ORDER.map((name) => [name, { name, bytes: 0, requests: 0, unmeasured: 0 }]),
+  );
+  const domains = new Map<string, { host: string; requests: number; bytes: number; sameSite: boolean }>();
+  const protocols = new Map<string, number>();
+  const renderBlocking: string[] = [];
+
+  const html = categories.get('HTML')!;
+  html.requests = 1;
+  html.bytes = nav?.encodedBodySize || nav?.transferSize || 0;
+
+  for (const r of resources) {
+    const category = categories.get(resourceCategory(r))!;
+    category.requests++;
+    // encodedBodySize is the compressed size, and is still reported for cached responses.
+    // Cross-origin responses without Timing-Allow-Origin report zeros, so count them separately.
+    const bytes = r.encodedBodySize || r.transferSize;
+    let host = '';
+    try { host = new URL(r.name).hostname; } catch { /* data: or blob: */ }
+    if (bytes > 0) category.bytes += bytes;
+    else if (host && host !== location.hostname && r.decodedBodySize === 0) category.unmeasured++;
+
+    if (host) {
+      const d = domains.get(host) ?? { host, requests: 0, bytes: 0, sameSite: siteOf(host) === pageSite };
+      d.requests++;
+      d.bytes += bytes;
+      domains.set(host, d);
+    }
+    const protocol = r.nextHopProtocol || 'unknown';
+    protocols.set(protocol, (protocols.get(protocol) ?? 0) + 1);
+    if (r.renderBlockingStatus === 'blocking') renderBlocking.push(r.name);
+  }
+
+  const categoryList = [...categories.values()].filter((c) => c.requests > 0);
   return {
-    robotsTxt: { exists: false, content: null },
-    sitemap: { exists: false, url: null, urls: [] },
     hreflang,
-    pageWeight: { total, js: jsSize, css: cssSize, images: imageSize, fonts: fontSize, other: otherSize },
+    pageWeight: {
+      categories: categoryList,
+      totalBytes: categoryList.reduce((sum, c) => sum + c.bytes, 0),
+      totalRequests: categoryList.reduce((sum, c) => sum + c.requests, 0),
+      unmeasured: categoryList.reduce((sum, c) => sum + c.unmeasured, 0),
+    },
+    domains: [...domains.values()].sort((a, b) => b.requests - a.requests),
+    protocols: [...protocols.entries()].map(([protocol, requests]) => ({ protocol, requests })).sort((a, b) => b.requests - a.requests),
+    documentProtocol: nav?.nextHopProtocol || null,
     renderBlocking,
-    jsRendering: { initialElementCount: 0, renderedElementCount, diff: 0 },
+    mixedContent: findMixedContent(resources),
+    domElements: document.getElementsByTagName('*').length,
+    performance: performanceMetrics(),
   };
 }
 

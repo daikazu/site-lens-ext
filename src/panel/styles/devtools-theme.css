@@ -152,3 +152,84 @@ body {
   min-width: 14px;
   text-align: center;
 }
+
+/* --- Shared panel grammar: section title, then hairline rows with a shared label column. --- */
+
+.tone-ok { color: var(--success-color); }
+.tone-warning { color: var(--warning-color); }
+.tone-error { color: var(--error-color); }
+.tone-muted, .muted { color: var(--text-muted); }
+.mono { font-family: var(--font-mono); font-size: 11.5px; }
+.num { font-variant-numeric: tabular-nums; }
+
+.kv-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 20px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.kv-count {
+  font-size: 10px;
+  letter-spacing: 0;
+  color: var(--text-primary);
+  font-weight: 600;
+  background: var(--bg-active);
+  border-radius: 8px;
+  padding: 0 6px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kv-rows { list-style: none; border-top: 1px solid var(--border-color); }
+.kv-rows > li, .kv-rows > .kv-row { border-bottom: 1px solid var(--border-color); }
+
+.kv-row {
+  display: grid;
+  grid-template-columns: var(--label-col, 112px) minmax(0, 1fr);
+  column-gap: var(--row-gap-x, 16px);
+  align-items: baseline;
+  padding: 7px 0;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.kv-label { color: var(--text-muted); font-size: 11px; overflow-wrap: anywhere; }
+.kv-value { color: var(--text-primary); min-width: 0; overflow-wrap: anywhere; }
+.kv-sub { display: block; font-size: 11px; }
+.kv-note { padding: 7px 0; font-size: 11px; color: var(--text-muted); }
+
+.kv-row-button {
+  grid-template-columns: var(--label-col, 112px) minmax(0, 1fr) 14px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 7px 0;
+  border-radius: 0;
+  transition: background-color 150ms ease-out;
+}
+.kv-row-button:hover:not(:disabled) { background: var(--bg-hover); }
+.kv-row-button:focus-visible { outline: 1px solid var(--accent-color); outline-offset: -1px; }
+.kv-row-button:disabled { cursor: default; }
+
+.kv-details > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 11px;
+  margin-top: 4px;
+  width: max-content;
+}
+.kv-details > summary:hover { color: var(--text-primary); }
+.kv-details[open] > summary { margin-bottom: 6px; }
